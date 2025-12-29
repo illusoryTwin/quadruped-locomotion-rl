@@ -1,2 +1,0 @@
-[2025-12-29 16:06:50,377][isaaclab.envs.manager_based_env][WARNING] - The render interval (1) is smaller than the decimation (4). Multiple render calls will happen for each environment step. If this is not intended, set the render interval to be equal to the decimation.
-[2025-12-29 16:06:59,491][isaaclab.envs.mdp.commands.velocity_command][WARNING] - The velocity command has the 'ranges.heading' attribute set to '(-3.141592653589793, 3.141592653589793)' but the heading command is not active. Consider setting the flag for the heading command to True.
