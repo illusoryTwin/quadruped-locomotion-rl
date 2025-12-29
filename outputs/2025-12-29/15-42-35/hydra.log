@@ -1,0 +1,12 @@
+[2025-12-29 15:42:36,004][ogn_registration][INFO] - Looking for Python nodes to register in omni.physx.fabric-107.3.26
+[2025-12-29 15:42:36,004][ogn_registration][INFO] -  -> Registered nodes from module omni.physxfabric at /home/ekaterina-mozhegova/miniforge3/envs/isaacsim/lib/python3.11/site-packages/isaacsim/extscache/omni.physx.fabric-107.3.26+107.3.3.lx64.r.cp311.u353
+[2025-12-29 15:42:36,004][ogn_registration][INFO] - Registering nodes in /home/ekaterina-mozhegova/miniforge3/envs/isaacsim/lib/python3.11/site-packages/isaacsim/extscache/omni.physx.fabric-107.3.26+107.3.3.lx64.r.cp311.u353 imported as omni.physxfabric with AutoNode config {}
+[2025-12-29 15:42:36,004][ogn_registration][INFO] - Registering Python Node Types from omni.physxfabric at /home/ekaterina-mozhegova/miniforge3/envs/isaacsim/lib/python3.11/site-packages/isaacsim/extscache/omni.physx.fabric-107.3.26+107.3.3.lx64.r.cp311.u353 in omni.physx.fabric
+[2025-12-29 15:42:36,004][ogn_registration][INFO] - ========================================================================================================================
+[2025-12-29 15:42:36,005][ogn_registration][INFO] - No dependency on omni.graph, therefore no nodes to register in omni.physx.fabric
+[2025-12-29 15:42:36,005][ogn_registration][INFO] - ...None found, no registration to do
+[2025-12-29 15:42:36,005][ogn_registration][INFO] - ...Skipping: No OmniGraph presence in the module omni.physxfabric - No nodes in this module, do not remember it
+[2025-12-29 15:42:36,005][ogn_registration][INFO] - Destroying registration record for omni.physx.fabric
+[2025-12-29 15:42:36,005][ogn_registration][INFO] - OGN register omni.physx.fabric-107.3.26 took 1084150.000000
+[2025-12-29 15:42:36,122][isaaclab.envs.manager_based_env][WARNING] - The render interval (1) is smaller than the decimation (4). Multiple render calls will happen for each environment step. If this is not intended, set the render interval to be equal to the decimation.
+[2025-12-29 15:42:40,009][isaaclab.envs.mdp.commands.velocity_command][WARNING] - The velocity command has the 'ranges.heading' attribute set to '(-3.141592653589793, 3.141592653589793)' but the heading command is not active. Consider setting the flag for the heading command to True.
