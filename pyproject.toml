@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quadruped-locomotion-rl"
+version = "0.0.1"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["tasks*", "modules*"]
