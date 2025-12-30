@@ -221,7 +221,7 @@ class RewardsCfg:
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
 
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
-    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
+    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
     feet_air_time = RewardTerm(
         func=feet_air_time,
         weight=0.25,
