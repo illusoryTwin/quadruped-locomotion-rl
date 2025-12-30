@@ -46,7 +46,7 @@ def feet_air_time(
 
 
 @configclass
-class MySceneCfg(InteractiveSceneCfg):
+class RoughTerrainSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     terrain = TerrainImporterCfg(
@@ -176,34 +176,6 @@ class EventCfg:
 @configclass 
 class RewardsCfg:
     # -- task
-    # track_lin_vel_xy = RewardTerm(
-    #     func=mdp.track_lin_vel_xy_exp,
-    #     weight=2.0,
-    #         params={"command_name": "base_velocity",
-    #                 "std": 0.5
-    #                 },
-    # )
-    # track_ang_vel = RewardTerm(
-    #     func=mdp.track_ang_vel_z_exp,
-    #     weight=1.0,
-    #         params={"command_name": "base_velocity",
-    #                 "std": 0.5
-    #                 },
-    # )
-    # track_lin_vel_xy = RewardTerm(
-    #     func=mdp.track_lin_vel_xy_exp,
-    #     weight=1.0,
-    #         params={"command_name": "base_velocity",
-    #                 "std": 0.5
-    #                 },
-    # )
-    # track_ang_vel = RewardTerm(
-    #     func=mdp.track_ang_vel_z_exp,
-    #     weight=0.5,
-    #         params={"command_name": "base_velocity",
-    #                 "std": 0.5
-    #                 },
-    # )
     track_lin_vel_xy_exp = RewardTerm(
         func=mdp.track_lin_vel_xy_exp, 
         weight=1.5, 
@@ -231,47 +203,6 @@ class RewardsCfg:
             "threshold": 0.5,
         },
     )
-    # undesired_contacts = RewardTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-1.0,
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*thigh"), "threshold": 1.0},
-    # )
-    # -- optional penalties
-    # flat_orientation_l2 = RewardTerm(func=mdp.flat_orientation_l2, weight=-2.5)
-    # dof_pos_limits = RewardTerm(func=mdp.joint_pos_limits, weight=0.0)
-
-    # =======================
-
-    # track_lin_vel_xy = RewardTerm(
-    #     func=mdp.track_lin_vel_xy_exp,
-    #     weight=1.0,
-    #         params={"command_name": "base_velocity",
-    #                 "std": 0.5
-    #                 },
-    # )
-    # track_ang_vel = RewardTerm(
-    #     func=mdp.track_ang_vel_z_exp,
-    #     weight=0.5,
-    #         params={"command_name": "base_velocity",
-    #                 "std": 0.5
-    #                 },
-    # )
-    # feet_air_time = RewardTerm(
-    #     func=feet_air_time,
-    #     weight=0.25,
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-    #         "threshold": 0.5,
-    #     }
-    # )
-    # dof_acc = RewardTerm(mdp.joint_acc_l2, weight=-2e-7)
-    # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
-    # dof_pos_limits = RewardTerm(func=mdp.joint_pos_limits, weight=1.0)
-    
-    # #TODO:
-    # # add body height?????
-    # # flat_orientation
 
 
 @configclass
@@ -288,10 +219,9 @@ class CurriculumCfg:
     pass 
 
 
-
 @configclass 
 class UnitreeGo2WalkEnvCfg(LocomotionVelocityRoughEnvCfg):
-        scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+        scene: RoughTerrainSceneCfg = RoughTerrainSceneCfg(num_envs=4096, env_spacing=2.5)
         commands: CommandsCfg = CommandsCfg()
         actions: ActionsCfg = ActionsCfg()
         observations: ObservationsCfg = ObservationsCfg()
