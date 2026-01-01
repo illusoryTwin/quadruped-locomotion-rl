@@ -19,9 +19,9 @@ from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
-
 from isaaclab.envs import ManagerBasedRLEnv
-
+from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
+import isaaclab.terrains as terrain_gen
 
 def feet_air_time(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
@@ -93,7 +93,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
         "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
             proportion=0.15, noise_range=(-0.02, 0.04), noise_step=0.02, border_width=0.25
         ),
-        "wave": terrain_gen.HfWaveTerrainCfg(proportion=0.15, amplitude_range=(0.0, 0.2), num_waves=5.0),
+        "wave": terrain_gen.HfWaveTerrainCfg(proportion=0.15, amplitude_range=(0.0, 0.2), num_waves=5),
         "high_platform": terrain_gen.MeshPitTerrainCfg(
             proportion=0.15, pit_depth_range=(0.0, 0.3), platform_width=2.0, double_pit=True
         ),
@@ -106,18 +106,17 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
-        # prim_path="/World/ground",
-        # terrain_type="plane",
-        # collision_group=-1,
-        # physics_material=sim_utils.RigidBodyMaterialCfg(
-        #     friction_combine_mode="multiply",
-        #     restitution_combine_mode="multiply",
-        #     static_friction=1.0,
-        #     dynamic_friction=1.0,
-        # ),
-        # debug_vis=False,
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+        debug_vis=False,
     )
 
     sky_light = AssetBaseCfg(
