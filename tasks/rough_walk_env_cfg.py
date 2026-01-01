@@ -54,6 +54,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     vertical_scale=0.005,
     slope_threshold=0.75,
     use_cache=False,
+    curriculum=True,
     sub_terrains={
         "pyramid_stairs_28": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
             proportion=0.1,
