@@ -14,11 +14,13 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
-import isaaclab.envs.mdp as mdp
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
+from isaaclab.managers import CurriculumTermCfg as CurrTermactivate
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
 import isaaclab.terrains as terrain_gen
@@ -274,7 +276,7 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    pass 
+    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel) 
 
 
 @configclass 
