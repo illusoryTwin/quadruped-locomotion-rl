@@ -13,7 +13,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     use_cache=False,
     curriculum=True,
     sub_terrains={
-        "pyramid_stairs_28": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+        "pyramid_inverted_stairs_28": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
             proportion=0.1,
             step_height_range=(0.0, 0.23),
             step_width=0.28,
@@ -21,7 +21,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             border_width=1.0,
             holes=False,
         ),
-        "pyramid_stairs_30": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+        "pyramid_inverted_stairs_30": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
             proportion=0.1,
             step_height_range=(0.0, 0.23),
             step_width=0.30,
@@ -29,7 +29,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             border_width=1.0,
             holes=False,
         ),
-        "pyramid_stairs_32": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+        "pyramid_inverted_stairs_32": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
             proportion=0.1,
             step_height_range=(0.0, 0.23),
             step_width=0.32,
@@ -37,7 +37,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             border_width=1.0,
             holes=False,
         ),
-        "pyramid_stairs_34": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+        "pyramid_inverted_stairs_34": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
             proportion=0.1,
             step_height_range=(0.0, 0.23),
             step_width=0.34,
@@ -58,3 +58,114 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     }
 )
 
+
+STAIRS_TERRAIN_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    curriculum=True,
+    sub_terrains={
+        "pyramid_stairs_28": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.0, 0.23),
+            step_width=0.28,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_30": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.2,
+            step_height_range=(0.0, 0.23),
+            step_width=0.30,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_32": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.0, 0.23),
+            step_width=0.32,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_34": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.0, 0.23),
+            step_width=0.34,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+
+        "pyramid_inverted_stairs_28": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.0, 0.23),
+            step_width=0.28,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_inverted_stairs_30": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.2,
+            step_height_range=(0.0, 0.23),
+            step_width=0.30,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_inverted_stairs_32": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.0, 0.23),
+            step_width=0.32,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_inverted_stairs_34": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.0, 0.23),
+            step_width=0.34,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+    }
+)
+
+
+
+SIMPLE_STAIRS_TERRAIN_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    curriculum=True,
+    sub_terrains={
+        "pyramid_stairs_30": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.5,
+            step_height_range=(0.0, 0.23),
+            step_width=0.30,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_inverted_stairs_30": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.5,
+            step_height_range=(0.0, 0.23),
+            step_width=0.30,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+    }
+)
