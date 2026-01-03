@@ -22,8 +22,8 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
-import isaaclab.terrains as terrain_gen
+from modules.terrains import ROUGH_TERRAINS_CFG
+
 
 def feet_air_time(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
@@ -45,63 +45,6 @@ def feet_air_time(
     # no reward for zero command
     reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
     return reward
-
-
-ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
-    size=(8.0, 8.0),
-    border_width=20.0,
-    num_rows=10,
-    num_cols=20,
-    horizontal_scale=0.1,
-    vertical_scale=0.005,
-    slope_threshold=0.75,
-    use_cache=False,
-    curriculum=True,
-    sub_terrains={
-        "pyramid_stairs_28": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.1,
-            step_height_range=(0.0, 0.23),
-            step_width=0.28,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        "pyramid_stairs_30": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.1,
-            step_height_range=(0.0, 0.23),
-            step_width=0.30,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        "pyramid_stairs_32": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.1,
-            step_height_range=(0.0, 0.23),
-            step_width=0.32,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        "pyramid_stairs_34": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.1,
-            step_height_range=(0.0, 0.23),
-            step_width=0.34,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.15, grid_width=0.45, grid_height_range=(0.0, 0.15), platform_width=2.0
-        ),
-        "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            proportion=0.15, noise_range=(-0.02, 0.04), noise_step=0.02, border_width=0.25
-        ),
-        "wave": terrain_gen.HfWaveTerrainCfg(proportion=0.15, amplitude_range=(0.0, 0.2), num_waves=5),
-        "high_platform": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.15, pit_depth_range=(0.0, 0.3), platform_width=2.0, double_pit=True
-        ),
-    }
-)
 
 
 @configclass
@@ -291,16 +234,16 @@ class RewardsCfg:
     track_lin_vel_xy_exp = RewardTerm(
         func=mdp.track_lin_vel_xy_exp, 
         weight=1.5, 
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        params={"command_name": "base_velocity", "std": 0.5}
     )
     track_ang_vel_z_exp = RewardTerm(
         func=mdp.track_ang_vel_z_exp, 
         weight=0.75, 
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        params={"command_name": "base_velocity", "std": 0.5}
     )
     # -- penalties
-    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
 
