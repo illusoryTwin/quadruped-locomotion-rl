@@ -1,5 +1,7 @@
 # Quadruped Locomotion RL
 
+This repository includes reinforcement learning locomotion experiments for the Unitree Go2 robot and the deployment infrastructure required to test them in Mujoco simulator.
+
 Reinforcement learning for Unitree Go2 quadruped locomotion using Isaac Sim 5.1 and Isaac Lab 2.3.0.
 
 ## Project Structure
