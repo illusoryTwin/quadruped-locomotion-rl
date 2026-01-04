@@ -3,7 +3,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 # Add argparse arguments
-parser = argparse.ArgumentParser(description="Launch MySceneCfg scene.")
+parser = argparse.ArgumentParser(description="Launch FlatTerrainSceneCfg scene.")
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
 # Append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -25,7 +25,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.scene import InteractiveScene
 
 # Import scene configuration
-from tasks.walk_env_cfg import MySceneCfg
+from tasks.flat_walk_env_cfg import FlatTerrainSceneCfg
 
 
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
@@ -78,7 +78,7 @@ def main():
     sim.set_camera_view(eye=[3.0, 3.0, 2.0], target=[0.0, 0.0, 0.3])
 
     # Create scene configuration
-    scene_cfg = MySceneCfg(num_envs=args_cli.num_envs, env_spacing=2.5)
+    scene_cfg = FlatTerrainSceneCfg(num_envs=args_cli.num_envs, env_spacing=2.5)
 
     # Instantiate the scene
     scene = InteractiveScene(scene_cfg)

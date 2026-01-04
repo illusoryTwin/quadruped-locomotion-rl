@@ -14,13 +14,15 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
-import isaaclab.envs.mdp as mdp
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
+from isaaclab.managers import CurriculumTermCfg as CurrTermactivate
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
-
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.envs import ManagerBasedRLEnv
+from modules.terrains import SIMPLE_STAIRS_TERRAIN_CFG, STAIRS_TERRAIN_CFG
 
 
 def feet_air_time(
@@ -46,12 +48,13 @@ def feet_air_time(
 
 
 @configclass
-class MySceneCfg(InteractiveSceneCfg):
+class StairsSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
-        terrain_type="plane",
+        terrain_type="generator",
+        terrain_generator=SIMPLE_STAIRS_TERRAIN_CFG,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -125,18 +128,25 @@ class ObservationsCfg:
             params={"command_name": "base_velocity"},
         )
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=1.5, n_max=1.5))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
-        height_scan = ObsTerm(
-            func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-            noise=Unoise(n_min=-0.1, n_max=0.1)
-        )
+        # height_scan = ObsTerm(
+        #     func=mdp.height_scan,
+        #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+        #     noise=Unoise(n_min=-0.1, n_max=0.1)
+        # )
 
     @configclass 
     class CriticCfg(PolicyCfg):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.15, n_max=0.15), scale=1.0)
-
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-1.0, 1.0),
+            scale=1.0,
+            history_length=1,
+        )
     
     policy = PolicyCfg()
     critic = CriticCfg()
@@ -145,8 +155,31 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    reset_scene = mdp.reset_scene_to_default
-    reset_robot_joints = mdp.reset_joints_by_offset
+    # reset_scene = mdp.reset_scene_to_default
+    # reset_robot_joints = mdp.reset_joints_by_offset
+
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "static_friction_range": (0.8, 0.8),
+            "dynamic_friction_range": (0.6, 0.6),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 64,
+        },
+    )
+
+    # add_base_mass = EventTerm(
+    #     func=mdp.randomize_rigid_body_mass,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+    #         "mass_distribution_params": (-1.5, 1.5),
+    #         "operation": "add",
+    #     },
+    # )
+
 
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
@@ -154,12 +187,12 @@ class EventCfg:
         params={
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
             },
         },
     )
@@ -168,67 +201,88 @@ class EventCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "position_range": (-1.0, 1.0),
-            "velocity_range": (-0.5, 0.5),
+            "position_range": (0.0, 0.0),
+            "velocity_range": (0.0, 0.0),
         },
     )
+
+    # base_external_force_torque = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+    #         "force_range": (0.0, 0.0),
+    #         "torque_range": (-0.0, 0.0),
+    #     }
+    # )
+
+    # Disabled during initial training - enable after robot learns to walk
+    # push_robot = EventTerm(
+    #     func=mdp.push_by_setting_velocity,
+    #     mode="interval",
+    #     interval_range_s=(10.0, 15.0),
+    #     params={"velocity_range":
+    #         {"x": (-0.5, 0.5),
+    #         "y": (-0.5, 0.5),},
+    #     }
+    # )
 
 
 @configclass 
 class RewardsCfg:
-    track_lin_vel_xy = RewardTerm(
-        func=mdp.track_lin_vel_xy_exp,
-        weight=1.0,
-            params={"command_name": "base_velocity",
-                    "std": 0.5
-                    },
+    # -- task
+    track_lin_vel_xy_exp = RewardTerm(
+        func=mdp.track_lin_vel_xy_exp, 
+        weight=1.5, 
+        params={"command_name": "base_velocity", "std": 0.5}
     )
-    track_ang_vel = RewardTerm(
-        func=mdp.track_ang_vel_z_exp,
-        weight=0.5,
-            params={"command_name": "base_velocity",
-                    "std": 0.5
-                    },
+    track_ang_vel_z_exp = RewardTerm(
+        func=mdp.track_ang_vel_z_exp, 
+        weight=0.75, 
+        params={"command_name": "base_velocity", "std": 0.5}
     )
+    # -- penalties
+    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
+    # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
+
+    dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
+    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
     feet_air_time = RewardTerm(
         func=feet_air_time,
         weight=0.25,
         params={
-            "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "command_name": "base_velocity",
             "threshold": 0.5,
-        }
+        },
     )
-    dof_acc = RewardTerm(mdp.joint_acc_l2, weight=-2e-7)
-    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
-    dof_pos_limits = RewardTerm(func=mdp.joint_pos_limits, weight=1.0)
-    
-    #TODO:
-    # add body height?????
-    # flat_orientation
 
 
 @configclass
 class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # base_contact = mdp.illegal_contact
+    base_contact = DoneTerm(func=mdp.illegal_contact,
+                            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"),
+                                    "threshold": 1.0}
+    )
 
 
 @configclass
 class CurriculumCfg:
-    pass 
-
+    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel) 
 
 
 @configclass 
-class UnitreeGo2WalkEnvCfg(LocomotionVelocityRoughEnvCfg):
-        scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+class UnitreeGo2WalkStairsEnvCfg(LocomotionVelocityRoughEnvCfg):
+        scene: StairsSceneCfg = StairsSceneCfg(num_envs=4096, env_spacing=2.5)
         commands: CommandsCfg = CommandsCfg()
         actions: ActionsCfg = ActionsCfg()
         observations: ObservationsCfg = ObservationsCfg()
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
-        event: EventCfg = EventCfg()
+        events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
         def __post_init__(self):
