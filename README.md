@@ -1,8 +1,19 @@
 # Quadruped Locomotion RL
 
-This repository includes reinforcement learning locomotion experiments for the Unitree Go2 robot and the deployment infrastructure required to test them in Mujoco simulator.
+This repository includes reinforcement learning locomotion experiments for the Unitree Go2 robot and the deployment infrastructure required to test them in Mujoco simulator and transfer them to real hardware.
 
-Reinforcement learning for Unitree Go2 quadruped locomotion using Isaac Sim 5.1 and Isaac Lab 2.3.0.
+Currently supported tasks include:
+
+- walking on flat terrain
+- walking on rough terrain
+- climbing upstairs 
+
+These tasks serve as a basis for future experiments, including:
+
+- Mixture-of-Experts–based policy architectures
+- Soft compliant policies 
+
+This repo uses Isaac Sim 5.1 and Isaac Lab 2.3.0.
 
 ## Project Structure
 
