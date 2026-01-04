@@ -1,0 +1,46 @@
+# Go2 Flat Terrain Deployment Config
+robot: go2
+
+# Policy checkpoint (relative to repo root)
+checkpoint: logs/rsl_rl/unitree_go2_walk/2025-12-29_15-43-52/model_1500.pt
+
+# Observation space
+obs_dim: 232  # 45 base + 187 height scan
+base_obs_dim: 45
+
+# Action space
+action_dim: 12
+action_scale: 0.5
+
+# Control parameters
+control_dt: 0.02  # 50 Hz
+kp: 25.0
+kd: 0.5
+
+# Default joint positions (Isaac Lab order: FL, FR, RL, RR by joint type)
+default_joint_pos:
+  # hip joints
+  - 0.1    # FL_hip
+  - -0.1   # FR_hip
+  - 0.1    # RL_hip
+  - -0.1   # RR_hip
+  # thigh joints
+  - 0.8    # FL_thigh
+  - 0.8    # FR_thigh
+  - 1.0    # RL_thigh
+  - 1.0    # RR_thigh
+  # calf joints
+  - -1.5   # FL_calf
+  - -1.5   # FR_calf
+  - -1.5   # RL_calf
+  - -1.5   # RR_calf
+
+# DDS communication
+domain_id: 1
+interface: lo  # Use "lo" for simulation, actual interface for real robot
+
+# Velocity commands (default)
+default_velocity:
+  vx: 0.5
+  vy: 0.0
+  wz: 0.0
