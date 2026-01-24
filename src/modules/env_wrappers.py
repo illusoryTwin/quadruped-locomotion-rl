@@ -9,6 +9,13 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
     def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
+        
+        # Initialize compliance manager if configured
+        self.soft_compliance_manager = None
+        if hasattr(cfg, 'compliance') and cfg.compliance.enabled:
+            self.soft_compliance_manager = SoftComplianceManager(cfg.compliance, self)
+
+
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         """Execute one time-step of the environment's dynamics and reset terminated environments."""
@@ -67,10 +74,10 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
 
-        # # ============ PRINT TORQUES HERE (before observations) ============
-        # # Access the robot articulation - adjust "robot" to match your scene config key
-        # robot = self.scene["robot"]
-        # print(f"Applied torques: {robot.data.applied_torque}")
+        # ============ PRINT TORQUES HERE (before observations) ============
+        # Access the robot articulation - adjust "robot" to match your scene config key
+        robot = self.scene["robot"]
+        print(f"Applied torques: {robot.data.applied_torque}")
         # ==================================================================
 
         # -- compute observations

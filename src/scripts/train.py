@@ -101,7 +101,7 @@ from isaaclab.utils.io import dump_yaml
 from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
 
 import isaaclab_tasks  # noqa: F401
-import tasks  # noqa: F401  # registers go2_walk environment
+import envs  # noqa: F401  # registers go2_walk environment
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
