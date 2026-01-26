@@ -293,36 +293,53 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
-    # run training
-    runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
+    # Helper function to export JIT policy
+    def export_jit_policy(runner, env, env_cfg, agent_cfg, log_dir, suffix=""):
+        """Export JIT policy with normalizer and metadata."""
+        # Get the policy network
+        try:
+            policy_nn = runner.alg.policy  # RSL-RL 2.3+
+        except AttributeError:
+            policy_nn = runner.alg.actor_critic  # RSL-RL 2.2 and below
 
-    print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+        # Get the normalizer if it exists
+        if hasattr(policy_nn, "actor_obs_normalizer"):
+            normalizer = policy_nn.actor_obs_normalizer
+        elif hasattr(policy_nn, "student_obs_normalizer"):
+            normalizer = policy_nn.student_obs_normalizer
+        else:
+            normalizer = None
+            print("[WARNING] No observation normalizer found - policy may not work correctly in deployment")
 
-    # === Export JIT policy after training ===
-    print("[INFO] Exporting policy as JIT...")
+        # Export to JIT
+        export_dir = os.path.join(log_dir, "exported")
+        filename = f"policy{suffix}.pt" if suffix else "policy.pt"
+        export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_dir, filename=filename)
+        print(f"[INFO] Exported JIT policy to: {os.path.join(export_dir, filename)}")
 
-    # Get the policy network
+        # Also save metadata for deployment
+        _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir)
+
+    # Patch runner's save method to also export JIT
+    original_save = runner.save
+    def save_with_jit_export(it):
+        original_save(it)
+        # Export JIT alongside checkpoint (overwrites previous)
+        export_jit_policy(runner, env, env_cfg, agent_cfg, log_dir)
+        print(f"[INFO] JIT policy updated at iteration {it}")
+    runner.save = save_with_jit_export
+
+    # Run training with proper cleanup on interrupt
     try:
-        policy_nn = runner.alg.policy  # RSL-RL 2.3+
-    except AttributeError:
-        policy_nn = runner.alg.actor_critic  # RSL-RL 2.2 and below
-
-    # Get the normalizer if it exists
-    if hasattr(policy_nn, "actor_obs_normalizer"):
-        normalizer = policy_nn.actor_obs_normalizer
-    elif hasattr(policy_nn, "student_obs_normalizer"):
-        normalizer = policy_nn.student_obs_normalizer
-    else:
-        normalizer = None
-        print("[WARNING] No observation normalizer found - policy may not work correctly in deployment")
-
-    # Export to JIT
-    export_dir = os.path.join(log_dir, "exported")
-    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_dir, filename="policy.pt")
-    print(f"[INFO] Exported JIT policy to: {os.path.join(export_dir, 'policy.pt')}")
-
-    # Also save metadata for deployment
-    _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir)
+        runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
+        print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+    except KeyboardInterrupt:
+        print("\n[INFO] Training interrupted by user")
+        print(f"Training time before interrupt: {round(time.time() - start_time, 2)} seconds")
+    finally:
+        # Always export JIT on exit (even if interrupted)
+        print("[INFO] Exporting final JIT policy...")
+        export_jit_policy(runner, env, env_cfg, agent_cfg, log_dir)
 
     # close the simulator
     env.close()
