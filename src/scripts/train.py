@@ -98,7 +98,7 @@ from isaaclab.envs import (
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import dump_yaml
 
-from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
+from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit
 
 import isaaclab_tasks  # noqa: F401
 import envs  # noqa: F401  # registers go2_walk and go2_compliant_locomotion environments
@@ -114,6 +114,82 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
+
+
+def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
+    """Export deployment metadata alongside the JIT policy.
+
+    This creates YAML files with observation/action specifications
+    that deployment code can use to properly configure the pipeline.
+    """
+    import yaml
+    from datetime import datetime
+
+    os.makedirs(export_dir, exist_ok=True)
+
+    # Get robot joint information
+    unwrapped_env = env.unwrapped
+    robot = unwrapped_env.scene.articulations.get("robot")
+
+    if robot is not None:
+        joint_names = list(robot.joint_names)
+        num_joints = len(joint_names)
+    else:
+        joint_names = [f"joint_{i}" for i in range(12)]
+        num_joints = 12
+
+    # Get observation dimensions
+    obs_dim = env.observation_space.shape[0] if hasattr(env.observation_space, 'shape') else env.num_obs
+    action_dim = env.action_space.shape[0] if hasattr(env.action_space, 'shape') else env.num_actions
+
+    # Get control parameters
+    sim_dt = getattr(env_cfg.sim, 'dt', 0.005)
+    decimation = getattr(env_cfg, 'decimation', 4)
+    control_dt = sim_dt * decimation
+
+    # Get default joint positions from config
+    default_joint_pos = {}
+    if hasattr(env_cfg, 'init_state') and hasattr(env_cfg.init_state, 'joint_pos'):
+        default_joint_pos = dict(env_cfg.init_state.joint_pos)
+
+    # Get action scale
+    action_scale = getattr(env_cfg.actions, 'joint_pos', None)
+    if action_scale is not None and hasattr(action_scale, 'scale'):
+        action_scale_value = float(action_scale.scale)
+    else:
+        action_scale_value = 0.5  # default
+
+    # Build manifest
+    manifest = {
+        "artifact_version": "1.0.0",
+        "created_at": datetime.now().isoformat(),
+        "task_name": args_cli.task,
+        "model": {
+            "policy_path": "policy.pt",
+            "input_dim": obs_dim,
+            "output_dim": action_dim,
+        },
+        "robot": {
+            "joint_names": joint_names,
+            "num_joints": num_joints,
+        },
+        "control": {
+            "control_dt": control_dt,
+            "control_frequency": 1.0 / control_dt,
+            "action_scale": action_scale_value,
+            "default_joint_pos": default_joint_pos,
+        },
+        "observation": {
+            "obs_dim": obs_dim,
+        },
+    }
+
+    # Save manifest
+    manifest_path = os.path.join(export_dir, "manifest.yaml")
+    with open(manifest_path, "w") as f:
+        yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+
+    print(f"[INFO] Exported deployment manifest to: {manifest_path}")
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -221,6 +297,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
+
+    # === Export JIT policy after training ===
+    print("[INFO] Exporting policy as JIT...")
+
+    # Get the policy network
+    try:
+        policy_nn = runner.alg.policy  # RSL-RL 2.3+
+    except AttributeError:
+        policy_nn = runner.alg.actor_critic  # RSL-RL 2.2 and below
+
+    # Get the normalizer if it exists
+    if hasattr(policy_nn, "actor_obs_normalizer"):
+        normalizer = policy_nn.actor_obs_normalizer
+    elif hasattr(policy_nn, "student_obs_normalizer"):
+        normalizer = policy_nn.student_obs_normalizer
+    else:
+        normalizer = None
+        print("[WARNING] No observation normalizer found - policy may not work correctly in deployment")
+
+    # Export to JIT
+    export_dir = os.path.join(log_dir, "exported")
+    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_dir, filename="policy.pt")
+    print(f"[INFO] Exported JIT policy to: {os.path.join(export_dir, 'policy.pt')}")
+
+    # Also save metadata for deployment
+    _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir)
 
     # close the simulator
     env.close()

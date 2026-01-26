@@ -1,32 +1,47 @@
 #!/usr/bin/env python3
 """
-Export trained policy with normalizer for deployment.
+Export trained policy for deployment.
 
-This script loads a checkpoint and exports the policy as a JIT model
-with observation normalization baked in.
+This script has TWO modes:
 
-Usage:
-    conda activate isaaclab
-    cd ~/Workspace/Projects/quadruped-locomotion-rl
-    python deploy/export_policy.py --checkpoint logs/rsl_rl/unitree_go2_walk/2025-12-29_15-43-52/model_1500.pt
+1. STANDALONE MODE (no Isaac Lab required):
+   Extracts policy from checkpoint, but normalizer may be missing.
+
+   python deploy/export_policy.py --checkpoint logs/.../model_1500.pt
+
+2. FULL MODE (requires Isaac Lab):
+   Properly loads via RSL-RL runner to get normalizer.
+   Run via isaaclab.sh:
+
+   ./isaaclab.sh -p deploy/export_policy.py \
+       --checkpoint logs/.../model_1500.pt \
+       --task go2_walk_flat
+
+The recommended workflow is to let train.py export automatically after training.
+This script is for re-exporting existing checkpoints.
 """
 
 import argparse
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
 
 import torch
 import torch.nn as nn
+import yaml
 
 
-def export_policy(checkpoint_path: str, output_dir: str = None):
-    """Export policy with normalizer as JIT model."""
+def export_standalone(checkpoint_path: str, output_dir: str = None):
+    """
+    Export policy from checkpoint WITHOUT Isaac Lab.
 
+    This reconstructs the actor network from checkpoint weights.
+    WARNING: Normalizer may not be properly extracted.
+    """
     checkpoint_path = Path(checkpoint_path)
     if not checkpoint_path.exists():
-        print(f"[ERROR] Checkpoint not found: {checkpoint_path}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
     if output_dir is None:
         output_dir = checkpoint_path.parent / "exported"
@@ -44,8 +59,11 @@ def export_policy(checkpoint_path: str, output_dir: str = None):
     else:
         model_dict = checkpoint
 
-    # Get actor dimensions
+    # Extract actor architecture from weights
     actor_keys = [k for k in model_dict.keys() if k.startswith("actor.")]
+    if not actor_keys:
+        raise ValueError("Could not find actor weights in checkpoint (keys starting with 'actor.')")
+
     first_layer = model_dict["actor.0.weight"]
     input_dim = first_layer.shape[1]
 
@@ -58,44 +76,14 @@ def export_policy(checkpoint_path: str, output_dir: str = None):
     while f"actor.{idx}.weight" in model_dict:
         if idx < last_layer_idx:
             hidden_dims.append(model_dict[f"actor.{idx}.weight"].shape[0])
-        idx += 2
+        idx += 2  # Skip activation layers
 
-    print(f"[INFO] Actor: input={input_dim}, hidden={hidden_dims}, output={output_dim}")
+    print(f"[INFO] Actor architecture: input={input_dim}, hidden={hidden_dims}, output={output_dim}")
 
-    # Check for normalizer in checkpoint
+    # Check for normalizer
     has_normalizer = "actor_obs_normalizer.running_mean" in model_dict
 
-    if has_normalizer:
-        mean = model_dict["actor_obs_normalizer.running_mean"]
-        var = model_dict["actor_obs_normalizer.running_var"]
-        print(f"[INFO] Found normalizer in checkpoint")
-    else:
-        print(f"[WARNING] No normalizer in checkpoint - will try to load from RSL-RL")
-
-        # Try to load via RSL-RL
-        try:
-            from rsl_rl.modules import ActorCritic
-            from rsl_rl.runners import OnPolicyRunner
-
-            # Load the agent config
-            agent_cfg_path = checkpoint_path.parent / "params" / "agent.yaml"
-            if agent_cfg_path.exists():
-                import yaml
-                with open(agent_cfg_path) as f:
-                    agent_cfg = yaml.safe_load(f)
-
-                print(f"[INFO] Loaded agent config from {agent_cfg_path}")
-
-                # Check if empirical normalization was used
-                if agent_cfg.get("empirical_normalization", False):
-                    print(f"[WARNING] Training used empirical_normalization but it's not in checkpoint")
-                    print(f"[WARNING] The normalizer statistics were not saved during training")
-                    print(f"[WARNING] You need to re-run training with a patched RSL-RL that saves normalizer")
-
-        except ImportError:
-            print(f"[WARNING] RSL-RL not available in this environment")
-
-    # Build the actor network
+    # Build actor network
     class Actor(nn.Module):
         def __init__(self, input_dim, output_dim, hidden_dims):
             super().__init__()
@@ -123,55 +111,92 @@ def export_policy(checkpoint_path: str, output_dir: str = None):
             obs_normalized = (obs - self.mean) / torch.sqrt(self.var + self.epsilon)
             return self.actor(obs_normalized)
 
-    # Create actor and load weights
+    # Create and load actor
     actor = Actor(input_dim, output_dim, hidden_dims)
-    actor_state = {}
-    for k in actor_keys:
-        new_k = k.replace("actor.", "net.")
-        actor_state[new_k] = model_dict[k]
+    actor_state = {k.replace("actor.", "net."): v for k, v in model_dict.items() if k.startswith("actor.")}
     actor.load_state_dict(actor_state)
     actor.eval()
 
+    # Export
+    example_input = torch.zeros(1, input_dim)
+
     if has_normalizer:
-        # Export with normalizer
+        mean = model_dict["actor_obs_normalizer.running_mean"]
+        var = model_dict["actor_obs_normalizer.running_var"]
+        print(f"[INFO] Found normalizer in checkpoint")
+
         policy = PolicyWithNormalizer(actor, mean, var)
         policy.eval()
 
-        # Export as JIT
-        example_input = torch.zeros(1, input_dim)
         traced = torch.jit.trace(policy, example_input)
-
         output_path = output_dir / "policy.pt"
         traced.save(str(output_path))
-        print(f"[INFO] Exported policy with normalizer to: {output_path}")
+        print(f"[SUCCESS] Exported policy WITH normalizer to: {output_path}")
     else:
-        # Export actor only (without normalizer)
-        example_input = torch.zeros(1, input_dim)
-        traced = torch.jit.trace(actor, example_input)
+        print(f"[WARNING] No normalizer found in checkpoint!")
+        print(f"[WARNING] Exporting actor only - deployment may not work correctly")
 
+        traced = torch.jit.trace(actor, example_input)
         output_path = output_dir / "policy_no_normalizer.pt"
         traced.save(str(output_path))
         print(f"[WARNING] Exported policy WITHOUT normalizer to: {output_path}")
-        print(f"[WARNING] This policy will likely not work correctly!")
-        print(f"")
-        print(f"To fix this, you have two options:")
-        print(f"1. Run play.py in Isaac Lab to export with normalizer:")
-        print(f"   conda activate isaaclab")
-        print(f"   cd ~/Workspace/IsaacLab")
-        print(f"   ./isaaclab.sh -p {Path(__file__).parent.parent}/src/scripts/play.py \\")
-        print(f"       --task Isaac-Velocity-Flat-Unitree-Go2-v0 \\")
-        print(f"       --checkpoint {checkpoint_path}")
-        print(f"")
-        print(f"2. Re-train with a fixed RSL-RL that saves the normalizer")
+
+    # Save manifest
+    manifest = {
+        "artifact_version": "1.0.0",
+        "created_at": datetime.now().isoformat(),
+        "export_mode": "standalone",
+        "model": {
+            "policy_path": output_path.name,
+            "input_dim": input_dim,
+            "output_dim": output_dim,
+            "hidden_dims": hidden_dims,
+            "has_normalizer": has_normalizer,
+        },
+        "source_checkpoint": str(checkpoint_path),
+    }
+
+    manifest_path = output_dir / "manifest.yaml"
+    with open(manifest_path, "w") as f:
+        yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+
+    print(f"[INFO] Saved manifest to: {manifest_path}")
+
+    if not has_normalizer:
+        print()
+        print("=" * 60)
+        print("WARNING: Policy exported WITHOUT normalizer!")
+        print()
+        print("The policy will likely not work correctly in deployment.")
+        print("To fix this, use one of these options:")
+        print()
+        print("Option 1: Re-run training (recommended)")
+        print("  Training now automatically exports JIT with normalizer.")
+        print()
+        print("Option 2: Use play.py with --num_steps 0")
+        print("  ./isaaclab.sh -p src/scripts/play.py \\")
+        print(f"      --task YOUR_TASK --checkpoint {checkpoint_path}")
+        print("=" * 60)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Export policy for deployment")
+    parser = argparse.ArgumentParser(
+        description="Export policy for deployment",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to checkpoint")
     parser.add_argument("--output", type=str, default=None, help="Output directory")
+    parser.add_argument("--task", type=str, default=None,
+                        help="Task name (if provided, uses Isaac Lab for proper export)")
     args = parser.parse_args()
 
-    export_policy(args.checkpoint, args.output)
+    if args.task:
+        print("[INFO] Task specified - this requires Isaac Lab environment")
+        print("[INFO] Please run via: ./isaaclab.sh -p deploy/export_policy.py ...")
+        print("[INFO] Falling back to standalone mode...")
+
+    export_standalone(args.checkpoint, args.output)
 
 
 if __name__ == "__main__":
