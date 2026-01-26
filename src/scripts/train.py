@@ -127,37 +127,42 @@ def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
 
     os.makedirs(export_dir, exist_ok=True)
 
-    # Get robot joint information
+    # Get the unwrapped Isaac Lab environment (go through RslRlVecEnvWrapper)
     unwrapped_env = env.unwrapped
-    robot = unwrapped_env.scene.articulations.get("robot")
 
+    # Get observation/action dimensions from the wrapper (RslRlVecEnvWrapper exposes these)
+    obs_dim = env.num_obs
+    action_dim = env.num_actions
+
+    # Get robot joint information from the scene
+    robot = unwrapped_env.scene.articulations.get("robot")
     if robot is not None:
         joint_names = list(robot.joint_names)
         num_joints = len(joint_names)
+
+        # Get default joint positions from robot config
+        default_joint_pos = {}
+        if hasattr(robot.cfg, 'init_state') and hasattr(robot.cfg.init_state, 'joint_pos'):
+            init_joint_pos = robot.cfg.init_state.joint_pos
+            if isinstance(init_joint_pos, dict):
+                default_joint_pos = {k: float(v) for k, v in init_joint_pos.items()}
     else:
         joint_names = [f"joint_{i}" for i in range(12)]
         num_joints = 12
-
-    # Get observation dimensions
-    obs_dim = env.observation_space.shape[0] if hasattr(env.observation_space, 'shape') else env.num_obs
-    action_dim = env.action_space.shape[0] if hasattr(env.action_space, 'shape') else env.num_actions
+        default_joint_pos = {}
 
     # Get control parameters
-    sim_dt = getattr(env_cfg.sim, 'dt', 0.005)
+    sim_dt = float(unwrapped_env.physics_dt) if hasattr(unwrapped_env, 'physics_dt') else 0.005
     decimation = getattr(env_cfg, 'decimation', 4)
     control_dt = sim_dt * decimation
 
-    # Get default joint positions from config
-    default_joint_pos = {}
-    if hasattr(env_cfg, 'init_state') and hasattr(env_cfg.init_state, 'joint_pos'):
-        default_joint_pos = dict(env_cfg.init_state.joint_pos)
-
-    # Get action scale
-    action_scale = getattr(env_cfg.actions, 'joint_pos', None)
-    if action_scale is not None and hasattr(action_scale, 'scale'):
-        action_scale_value = float(action_scale.scale)
-    else:
-        action_scale_value = 0.5  # default
+    # Get action scale from action manager
+    action_scale_value = 0.5  # default
+    if hasattr(unwrapped_env, 'action_manager') and hasattr(unwrapped_env.action_manager, '_terms'):
+        if 'joint_pos' in unwrapped_env.action_manager._terms:
+            action_term = unwrapped_env.action_manager._terms['joint_pos']
+            if hasattr(action_term, '_scale'):
+                action_scale_value = float(action_term._scale)
 
     # Build manifest
     manifest = {
@@ -166,21 +171,21 @@ def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
         "task_name": args_cli.task,
         "model": {
             "policy_path": "policy.pt",
-            "input_dim": obs_dim,
-            "output_dim": action_dim,
+            "input_dim": int(obs_dim),
+            "output_dim": int(action_dim),
         },
         "robot": {
             "joint_names": joint_names,
             "num_joints": num_joints,
         },
         "control": {
-            "control_dt": control_dt,
-            "control_frequency": 1.0 / control_dt,
-            "action_scale": action_scale_value,
+            "control_dt": float(control_dt),
+            "control_frequency": float(1.0 / control_dt),
+            "action_scale": float(action_scale_value),
             "default_joint_pos": default_joint_pos,
         },
         "observation": {
-            "obs_dim": obs_dim,
+            "obs_dim": int(obs_dim),
         },
     }
 
