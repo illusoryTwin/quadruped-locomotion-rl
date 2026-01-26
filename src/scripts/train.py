@@ -301,19 +301,25 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Helper function to export JIT policy
     def export_jit_policy(runner, env, env_cfg, agent_cfg, log_dir, suffix=""):
         """Export JIT policy with normalizer and metadata."""
+        # Switch to eval mode for export (important for batch norm, dropout, etc.)
+        runner.eval_mode()
+
         # Get the policy network
         try:
             policy_nn = runner.alg.policy  # RSL-RL 2.3+
         except AttributeError:
             policy_nn = runner.alg.actor_critic  # RSL-RL 2.2 and below
 
-        # Get the normalizer if it exists
-        if hasattr(policy_nn, "actor_obs_normalizer"):
+        # Get the normalizer - prefer runner.obs_normalizer (more reliable)
+        normalizer = None
+        if hasattr(runner, "obs_normalizer") and runner.obs_normalizer is not None:
+            normalizer = runner.obs_normalizer
+        elif hasattr(policy_nn, "actor_obs_normalizer"):
             normalizer = policy_nn.actor_obs_normalizer
         elif hasattr(policy_nn, "student_obs_normalizer"):
             normalizer = policy_nn.student_obs_normalizer
-        else:
-            normalizer = None
+
+        if normalizer is None:
             print("[WARNING] No observation normalizer found - policy may not work correctly in deployment")
 
         # Export to JIT
@@ -324,6 +330,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
         # Also save metadata for deployment
         _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir)
+
+        # Switch back to train mode
+        runner.train_mode()
 
     # Patch runner's save method to also export JIT
     original_save = runner.save
