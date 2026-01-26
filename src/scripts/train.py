@@ -131,7 +131,7 @@ def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
     unwrapped_env = env.unwrapped
 
     # Get observation/action dimensions from the wrapper (RslRlVecEnvWrapper exposes these)
-    obs_dim = env.num_obs
+    obs_dim = gym.spaces.flatdim(env.observation_space["policy"])
     action_dim = env.num_actions
 
     # Get robot joint information from the scene
