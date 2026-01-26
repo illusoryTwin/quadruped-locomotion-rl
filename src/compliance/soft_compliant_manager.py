@@ -1,53 +1,78 @@
+import re
+import torch
+import numpy as np
 
-class SoftComplianceManager:    
+from compliance.soft_compliance_manager_cfg import SoftComplianceManagerCfg
+from compliance.mass_sprint_damper_model import MSDSystem
+from isaaclab.utils.math import matrix_from_quat
+
+
+class SoftComplianceManager:
     """Manager for soft joint compliance using Mass-Spring-Damper model."""
 
     def __init__(self, cfg: SoftComplianceManagerCfg, env):
-        self.cfg = cfg 
+        self.cfg = cfg
         self._env = env
-        self._robot = env.scene.articulations[cfg.robot_name]
-        self._device = env.device 
+        self._robot = env.scene[cfg.robot_name]
+        self._device = env.device
         self._num_envs = env.num_envs
-        # self._deformations = None 
 
-        # Monitored bodies - from config directly
-        self._monitored_body_indices = [
-            self._robot.body_names.index(name)
-            for name in cfg.monitored_bodies
-        ]
+        # Monitored bodies - expand regex patterns to actual body names
+        self._monitored_body_indices = self._expand_body_indices(cfg.monitored_bodies)
 
-        # Active joints - derived from stiffness_config keys
-        self._active_joint_indices = [
-            self._robot.joint_names.index(name)
-            for name in cfg.stiffness_config.keys()
-            if name in self._robot.joint_names
-        ]
-        
+        # Active joints - derived from stiffness_config keys (also supports regex)
+        self._active_joint_indices = self._expand_joint_indices(list(cfg.stiffness_config.keys()))
+
+        # Build expanded stiffness config with actual joint indices
+        self._stiffness_scales = self._build_stiffness_scales(cfg.stiffness_config)
+
         self._msd_system = self._setup_msd_system()
         self._deformations = None
+
+    def _expand_body_indices(self, body_patterns: list) -> list:
+        """Expand regex patterns to actual body indices."""
+        indices = []
+        for pattern in body_patterns:
+            regex = re.compile(pattern)
+            for i, name in enumerate(self._robot.body_names):
+                if regex.fullmatch(name) and i not in indices:
+                    indices.append(i)
+        return indices
+
+    def _expand_joint_indices(self, joint_patterns: list) -> list:
+        """Expand regex patterns to actual joint indices."""
+        indices = []
+        for pattern in joint_patterns:
+            regex = re.compile(pattern)
+            for i, name in enumerate(self._robot.joint_names):
+                if regex.fullmatch(name) and i not in indices:
+                    indices.append(i)
+        return sorted(indices)
+
+    def _build_stiffness_scales(self, stiffness_config: dict) -> dict:
+        """Build stiffness scales dict mapping joint index -> scale."""
+        scales = {}
+        for pattern, scale in stiffness_config.items():
+            regex = re.compile(pattern)
+            for i, name in enumerate(self._robot.joint_names):
+                if regex.fullmatch(name):
+                    scales[i] = scale
+        return scales
 
     def _setup_msd_system(self) -> MSDSystem:
         cfg = self.cfg
         n_dofs = self._robot.num_joints
 
-        # Build DOF index to scale mapping
-        stiffness_scales = {}  # Maps DOF index -> stiffness scale
-
-        # Process joints in stiffness_config
-        for joint_name, scale in cfg.stiffness_config.items():
-            if scale > 0 and joint_name in self._robot.joint_names:
-                joint_idx = self._robot.joint_names.index(joint_name)
-                stiffness_scales[joint_idx] = scale
-
         # Get active DOF indices
-        active_dof_indices = np.array(sorted(stiffness_scales.keys()), dtype=np.int32)
+        active_dof_indices = np.array(self._active_joint_indices, dtype=np.int32)
         print(f"[SoftComplianceManager] Number of active DOFs: {len(active_dof_indices)}")
+        print(f"[SoftComplianceManager] Monitored bodies: {[self._robot.body_names[i] for i in self._monitored_body_indices]}")
 
         # Create and return MSD system
         return MSDSystem(
             n_dofs=n_dofs,
             active_dof_indices=active_dof_indices,
-            stiffness_scales=stiffness_scales,
+            stiffness_scales=self._stiffness_scales,
             dt=cfg.dt,
             base_inertia=cfg.base_inertia,
             base_stiffness=cfg.base_stiffness
@@ -58,7 +83,12 @@ class SoftComplianceManager:
         """Return list of active joint indices."""
         return self._active_joint_indices
 
-    def reset(self, env_ids: torch.Tensor):
+    @property
+    def monitored_body_indices(self):
+        """Return list of monitored body indices."""
+        return self._monitored_body_indices
+
+    def reset(self, env_ids: torch.Tensor = None):
         """Reset MSD state for specified environments."""
         # reset all for now
         if self._msd_system is not None:
@@ -66,6 +96,10 @@ class SoftComplianceManager:
 
     def compute(self, dt: float) -> torch.Tensor:
         """Compute joint deformations from external forces."""
+
+        if len(self._active_joint_indices) == 0:
+            # No active joints, return zero deformations
+            return torch.zeros((self._num_envs, 0), device=self._device)
 
         # Compute joint torques from wrenches using Jacobian transpose
         joint_torques = self._compute_joint_torques()
@@ -96,8 +130,10 @@ class SoftComplianceManager:
         """
         verbose = False
         robot = self._robot
-        body_names = self.cfg.monitored_bodies
-        body_indices = [robot.body_names.index(name) for name in body_names]
+        body_indices = self._monitored_body_indices
+
+        if len(body_indices) == 0:
+            return torch.zeros((self._num_envs, robot.num_joints), device=self._device)
 
         # Get Jacobian in world frame: [num_envs, num_bodies, 6, num_joints]
         jacobians_w = robot.root_physx_view.get_jacobians()[:, body_indices, :, :]
@@ -123,6 +159,7 @@ class SoftComplianceManager:
 
         if verbose:
             print("\n=== BODY FRAME ===")
+            body_names = [robot.body_names[i] for i in body_indices]
             for i, name in enumerate(body_names):
                 print(f"\nBody: {name}")
                 print(f"  Wrench (body): force={forces_b[0, i].cpu().numpy()}, torque={torques_b[0, i].cpu().numpy()}")
@@ -137,13 +174,12 @@ class SoftComplianceManager:
             # Compute joint torques: tau = J_b^T @ wrench_b
             torques = torch.bmm(jacobian_b.transpose(1, 2), wrench_b).squeeze(-1)
             total_torques += torques
-        
-        verbose = False # True
+
         if verbose:
             print(f"\nTotal torques (body frame): {total_torques[0].cpu().numpy()}")
 
         return total_torques
-    
+
 
     def _transform_jacobian_world2body(self, jacobian_w: torch.Tensor, body_quat_w: torch.Tensor) -> torch.Tensor:
         """Transform Jacobian from world frame to body frame.

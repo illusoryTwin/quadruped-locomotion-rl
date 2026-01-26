@@ -79,7 +79,9 @@ class PolicyController:
         self.base_ang_vel = np.zeros(3, dtype=np.float32)
         self.projected_gravity = np.array([0.0, 0.0, -1.0], dtype=np.float32)
         self.imu_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
-        self.height_scan = np.zeros(self.height_scan_dim, dtype=np.float32)
+        # For flat terrain, height scan should be ~0.5 (base height above ground)
+        # The policy was trained with real height values, not zeros
+        self.height_scan = np.full(self.height_scan_dim, 0.5, dtype=np.float32)
 
         # Velocity commands
         default_vel = config.get("default_velocity", {})
@@ -132,7 +134,7 @@ class PolicyController:
             vz + qw * tz + qx * ty - qy * tx,
         ], dtype=np.float32)
 
-    def get_observation(self) -> torch.Tensor:
+    def get_observation(self, debug: bool = False) -> torch.Tensor:
         """Construct observation vector matching Isaac Lab format."""
         joint_pos_rel = self.joint_pos - self.default_joint_pos
 
@@ -149,16 +151,32 @@ class PolicyController:
             obs_parts.append(self.height_scan)
 
         obs = np.concatenate(obs_parts)
+
+        if debug:
+            print(f"  [OBS] base_ang_vel: {self.base_ang_vel}")
+            print(f"  [OBS] projected_gravity: {self.projected_gravity}")
+            print(f"  [OBS] velocity_commands: {self.velocity_commands}")
+            print(f"  [OBS] joint_pos_rel: {joint_pos_rel[:4]}...")
+            print(f"  [OBS] joint_vel: {self.joint_vel[:4]}...")
+            print(f"  [OBS] last_action: {self.last_action[:4]}...")
+            print(f"  [OBS] obs range: min={obs.min():.3f}, max={obs.max():.3f}")
+
         return torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
 
-    def get_action(self) -> np.ndarray:
+    def get_action(self, debug: bool = False) -> np.ndarray:
         """Run policy inference and return joint position targets."""
-        obs = self.get_observation()
-        action = self.policy(obs)
+        obs = self.get_observation(debug=debug)
+        action = self.policy(obs, debug=debug)
         action = action.squeeze(0).cpu().numpy()
+
+        # Clip actions to reasonable range (policy should output ~[-1, 1])
+        action = np.clip(action, -1.0, 1.0)
 
         self.last_action = action.copy()
         target_pos = action * self.action_scale + self.default_joint_pos
+
+        # Clip target positions to joint limits
+        target_pos = np.clip(target_pos, -3.14, 3.14)
 
         return target_pos
 
@@ -254,12 +272,26 @@ class RobotInterface:
 
         # Main control loop
         print("[INFO] Running policy... (Ctrl+C to stop)")
+        step_count = 0
         try:
             while True:
                 step_start = time.perf_counter()
 
-                target_pos_isaac = self.policy.get_action()
+                # Debug on first step to see full observation state
+                debug_step = (step_count == 0)
+                target_pos_isaac = self.policy.get_action(debug=debug_step)
                 target_pos_mujoco = target_pos_isaac[ISAAC_TO_MUJOCO]
+
+                # Debug output every 50 steps (~1 second)
+                if step_count % 50 == 0:
+                    print(f"[DEBUG] Step {step_count}")
+                    print(f"  vel_cmd: vx={self.policy.velocity_commands[0]:.2f}, vy={self.policy.velocity_commands[1]:.2f}, wz={self.policy.velocity_commands[2]:.2f}")
+                    print(f"  joint_pos: {self.policy.joint_pos[:4]}...")
+                    print(f"  joint_vel: {self.policy.joint_vel[:4]}...")
+                    print(f"  base_ang_vel: {self.policy.base_ang_vel}")
+                    print(f"  action (raw): min={self.policy.last_action.min():.3f}, max={self.policy.last_action.max():.3f}")
+                    print(f"  target_pos: {target_pos_isaac[:4]}...")
+                step_count += 1
 
                 for i in range(12):
                     cmd.motor_cmd[i].q = float(target_pos_mujoco[i])

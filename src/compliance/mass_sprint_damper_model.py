@@ -65,7 +65,7 @@ class MSDSystem:
         n_active = len(active_idx)
     
         if self.n_active == 0:
-            return np.eye(0), np.zeros((0, 0))
+            return np.eye(0), np.zeros((0, 0)), np.array([], dtype=np.int32)
 
         M_active = self.M[self.active_idx]
         D_active = self.D[self.active_idx]

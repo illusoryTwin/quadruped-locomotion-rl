@@ -39,3 +39,12 @@ class UnitreeGo2PPORunnerCfg(UnitreeGo2PPORunnerCfg):
 
         self.experiment_name = "unitree_go2_walk"
         self.max_iterations = 2500
+
+
+@ configclass 
+class UnitreeGo2SoftPPORunnerCfg(UnitreeGo2PPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "unitree_go2_walk_soft"
+        self.max_iterations = 2500
