@@ -359,8 +359,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env.close()
 
 
-if __name__ == "__main__":
-    # run the main function
+def run():
+    """Entry point for console script."""
     main()
-    # close sim app
     simulation_app.close()
+
+
+if __name__ == "__main__":
+    run()
