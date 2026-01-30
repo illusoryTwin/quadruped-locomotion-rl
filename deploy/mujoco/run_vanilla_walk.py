@@ -26,7 +26,7 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowCmd_, LowState_
 from unitree_sdk2py.utils.crc import CRC
 
 # Policy path - your trained policy
-POLICY_DIR = Path("/home/ekaterina-mozhegova/Workspace/Projects/quadruped-locomotion/quadruped-locomotion-rl/logs/rsl_rl/unitree_go2_walk/2026-01-30_11-37-42/exported")
+POLICY_DIR = Path("/home/ekaterina-mozhegova/Workspace/Projects/quadruped-locomotion/quadruped-locomotion-rl/logs/rsl_rl/unitree_go2_walk/2026-01-30_12-30-39/exported")
 
 
 def quat_rotate_inverse(q, v):
