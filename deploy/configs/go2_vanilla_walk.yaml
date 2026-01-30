@@ -1,0 +1,126 @@
+# Go2 Vanilla Walk Policy Config
+# Policy: go2_vanilla_walk (body_latest.jit format)
+
+robot: go2
+
+# Policy checkpoint
+checkpoint: logs/rsl_rl/go2_vanilla_walk/body_latest.jit
+
+# Joint order (Isaac Lab convention)
+joint_order:
+  - FL_hip_joint
+  - FR_hip_joint
+  - RL_hip_joint
+  - RR_hip_joint
+  - FL_thigh_joint
+  - FR_thigh_joint
+  - RL_thigh_joint
+  - RR_thigh_joint
+  - FL_calf_joint
+  - FR_calf_joint
+  - RL_calf_joint
+  - RR_calf_joint
+
+# Initial state (from go2_vanilla_walk/config.yaml)
+init_state:
+  default_joint_angles:
+    FL_hip_joint: 0.0
+    FR_hip_joint: 0.0
+    RL_hip_joint: 0.0
+    RR_hip_joint: 0.0
+    FL_thigh_joint: 0.9
+    FR_thigh_joint: 0.9
+    RL_thigh_joint: 0.9
+    RR_thigh_joint: 0.9
+    FL_calf_joint: -1.8
+    FR_calf_joint: -1.8
+    RL_calf_joint: -1.8
+    RR_calf_joint: -1.8
+
+# Observation configuration (commands at END for this policy)
+observation:
+  order:
+    - base_ang_vel
+    - projected_gravity
+    - dof_pos
+    - dof_vel
+    - actions
+    - commands
+
+  dims:
+    base_ang_vel: 3
+    projected_gravity: 3
+    dof_pos: 12
+    dof_vel: 12
+    actions: 12
+    commands: 4
+
+  scale:
+    base_ang_vel: 1.0
+    projected_gravity: 1.0
+    dof_pos: 1.0
+    dof_vel: 1.0
+    actions: 1.0
+    commands: 1.0
+
+  clip:
+    base_ang_vel: .inf
+    projected_gravity: .inf
+    dof_pos: .inf
+    dof_vel: .inf
+    actions: .inf
+    commands: .inf
+
+  # History: 10 frames for all terms
+  num_obs_hist: 10
+  hist_by_term: false
+
+# Control configuration
+control:
+  control_type: P
+  action_scale: 0.5
+  clip_actions: .inf
+  control_dt: 0.02  # 50 Hz (decimation=5, dt=0.004 -> 0.02)
+
+  stiffness:
+    hip: 20.0
+    thigh: 20.0
+    calf: 20.0
+  damping:
+    hip: 0.5
+    thigh: 0.5
+    calf: 0.5
+
+  limit_actions_by_torque: false
+  torque_limits:
+    hip: 24.0
+    thigh: 24.0
+    calf: 40.0
+
+# Command configuration (4 commands for this policy)
+commands:
+  names:
+    - lin_vel_x
+    - lin_vel_y
+    - ang_vel_z
+    - body_height
+  ranges:
+    lin_vel_x: [-0.5, 1.5]
+    lin_vel_y: [-0.5, 0.5]
+    ang_vel_z: [-1.0, 1.0]
+    body_height: [-0.02, 0.05]
+  scales:
+    lin_vel_x: 1.0
+    lin_vel_y: 1.0
+    ang_vel_z: 1.0
+    body_height: 1.0
+  defaults:
+    lin_vel_x: 0.5
+    lin_vel_y: 0.0
+    ang_vel_z: 0.0
+    body_height: 0.0
+
+# DDS communication
+dds:
+  domain_id: 1
+  interface: lo

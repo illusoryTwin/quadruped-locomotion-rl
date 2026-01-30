@@ -88,13 +88,7 @@ from datetime import datetime
 
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
-from isaaclab.envs import (
-    DirectMARLEnv,
-    DirectMARLEnvCfg,
-    DirectRLEnvCfg,
-    ManagerBasedRLEnvCfg,
-    multi_agent_to_single_agent,
-)
+from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import dump_yaml
 
@@ -164,6 +158,9 @@ def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
             if hasattr(action_term, '_scale'):
                 action_scale_value = float(action_term._scale)
 
+    # Check if normalizer is embedded in policy
+    has_normalizer = agent_cfg.empirical_normalization if hasattr(agent_cfg, 'empirical_normalization') else False
+
     # Build manifest
     manifest = {
         "artifact_version": "1.0.0",
@@ -173,6 +170,7 @@ def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
             "policy_path": "policy.pt",
             "input_dim": int(obs_dim),
             "output_dim": int(action_dim),
+            "has_normalizer": has_normalizer,  # True = normalizer embedded in JIT
         },
         "robot": {
             "joint_names": joint_names,
@@ -198,7 +196,7 @@ def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
+def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Train with RSL-RL agent."""
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
@@ -211,22 +209,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-    # check for invalid combination of CPU device with distributed training
-    if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
-        raise ValueError(
-            "Distributed training is not supported when using CPU device. "
-            "Please use GPU device (e.g., --device cuda) for distributed training."
-        )
 
-    # multi-gpu training configuration
-    if args_cli.distributed:
-        env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
-        agent_cfg.device = f"cuda:{app_launcher.local_rank}"
-
-        # set seed to have diversity in different threads
-        seed = agent_cfg.seed + app_launcher.local_rank
-        env_cfg.seed = seed
-        agent_cfg.seed = seed
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -240,23 +223,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
 
-    # set the IO descriptors export flag if requested
-    if isinstance(env_cfg, ManagerBasedRLEnvCfg):
-        env_cfg.export_io_descriptors = args_cli.export_io_descriptors
-    else:
-        logger.warning(
-            "IO descriptors are only supported for manager based RL environments. No IO descriptors will be exported."
-        )
-
     # set the log directory for the environment (works for all environment types)
     env_cfg.log_dir = log_dir
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
-
-    # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv):
-        env = multi_agent_to_single_agent(env)
 
     # save resume path before creating a new log_dir
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
@@ -277,15 +248,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     start_time = time.time()
 
     # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+    env = RslRlVecEnvWrapper(env) # , clip_actions=agent_cfg.clip_actions)
 
     # create runner from rsl-rl
-    if agent_cfg.class_name == "OnPolicyRunner":
-        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
-    elif agent_cfg.class_name == "DistillationRunner":
-        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
-    else:
-        raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
+    runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+
+    # if agent_cfg.class_name == "OnPolicyRunner":
+    #     runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    # elif agent_cfg.class_name == "DistillationRunner":
+    #     runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    # else:
+    #     raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
@@ -310,17 +283,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         except AttributeError:
             policy_nn = runner.alg.actor_critic  # RSL-RL 2.2 and below
 
-        # Get the normalizer - prefer runner.obs_normalizer (more reliable)
+        # Get the normalizer - try different locations depending on RSL_RL version
         normalizer = None
-        if hasattr(runner, "obs_normalizer") and runner.obs_normalizer is not None:
-            normalizer = runner.obs_normalizer
-        elif hasattr(policy_nn, "actor_obs_normalizer"):
-            normalizer = policy_nn.actor_obs_normalizer
-        elif hasattr(policy_nn, "student_obs_normalizer"):
-            normalizer = policy_nn.student_obs_normalizer
 
-        if normalizer is None:
-            print("[WARNING] No observation normalizer found - policy may not work correctly in deployment")
+        # RSL_RL 2.x: runner.obs_normalizer
+        if hasattr(runner, 'obs_normalizer'):
+            normalizer = runner.obs_normalizer
+        # RSL_RL 3.x: actor_critic.actor_obs_normalizer
+        elif hasattr(policy_nn, 'actor_obs_normalizer'):
+            normalizer = policy_nn.actor_obs_normalizer
+        # Fallback: check alg
+        elif hasattr(runner, 'alg') and hasattr(runner.alg, 'obs_normalizer'):
+            normalizer = runner.alg.obs_normalizer
+
+        # Check if it's a real normalizer or just Identity/None
+        if normalizer is not None:
+            normalizer_type = type(normalizer).__name__
+            if normalizer_type == "Identity":
+                print(f"[INFO] Normalizer is Identity (normalization disabled)")
+                normalizer = None
+            else:
+                print(f"[INFO] Using normalizer: {normalizer_type}")
+                if hasattr(normalizer, '_mean'):
+                    print(f"[INFO] Normalizer mean range: [{normalizer._mean.min():.3f}, {normalizer._mean.max():.3f}]")
+                    print(f"[INFO] Normalizer std range: [{normalizer._std.min():.3f}, {normalizer._std.max():.3f}]")
+        else:
+            print("[INFO] No normalizer found - policy will be exported without normalization")
 
         # Export to JIT
         export_dir = os.path.join(log_dir, "exported")
@@ -367,3 +355,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
