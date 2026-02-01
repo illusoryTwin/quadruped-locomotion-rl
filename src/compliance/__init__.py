@@ -1,4 +1,4 @@
-from compliance.soft_compliant_manager import SoftComplianceManager
-from compliance.soft_compliance_manager_cfg import SoftComplianceManagerCfg
+from compliance.compliant_manager import ComplianceManager
+from compliance.compliance_manager_cfg import ComplianceManagerCfg
 
-__all__ = ["SoftComplianceManager", "SoftComplianceManagerCfg"]
+__all__ = ["ComplianceManager", "ComplianceManagerCfg"]

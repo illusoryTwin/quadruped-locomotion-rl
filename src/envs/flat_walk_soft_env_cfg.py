@@ -21,8 +21,8 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
-from compliance.soft_compliance_manager_cfg import SoftComplianceManagerCfg
-
+from compliance.compliance_manager_cfg import ComplianceManagerCfg
+from modules import events
 
 def feet_air_time(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
@@ -146,30 +146,58 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    reset_base = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
+    # reset_base = EventTerm(
+    #     func=mdp.reset_root_state_uniform,
+    #     mode="reset",
+    #     params={
+    #         "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+    #         "velocity_range": {
+    #             "x": (-0.5, 0.5),
+    #             "y": (-0.5, 0.5),
+    #             "z": (-0.5, 0.5),
+    #             "roll": (-0.5, 0.5),
+    #             "pitch": (-0.5, 0.5),
+    #             "yaw": (-0.5, 0.5),
+    #         },
+    #     },
+    # )
+
+    # reset_robot_joints = EventTerm(
+    #     func=mdp.reset_joints_by_offset,
+    #     mode="reset",
+    #     params={
+    #         "position_range": (-1.0, 1.0),
+    #         "velocity_range": (-0.5, 0.5),
+    #     },
+    # )
+
+    # pull_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval",
+    #     interval_range_s=(5.0, 5.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
+    #         "force_range": (-20.0, 20.0),
+    #         "torque_range": (-5.0, 5.0),
+    #     },
+    # )
+
+    compliant_pull = EventTerm(
+        func=events.apply_compliance_force_torque,
+        mode="interval",
+        interval_range_s=(0.1, 0.5),
         params={
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
-            },
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=["base"],  # Go2 body name for compliance force application
+            ),
+            "force_range": (-10.0, 10.0),
+            "torque_range": (-3.0, 3.0),
+            # "force_range": (-20.0, 20.0),
+            # "torque_range": (-5.0, 5.0),
         },
     )
 
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "position_range": (-1.0, 1.0),
-            "velocity_range": (-0.5, 0.5),
-        },
-    )
 
 @configclass 
 class RewardsCfg:
@@ -228,7 +256,8 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
         events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
-        compliance: SoftComplianceManagerCfg = SoftComplianceManagerCfg(
+        compliance: ComplianceManagerCfg = ComplianceManagerCfg(
+            enabled=False,
             monitored_bodies=["base"], #, "FL_calf", "FR_calf", "RL_calf", "RR_calf"],
             stiffness_config={
                 "FL_hip_joint": 1.0,
@@ -245,7 +274,7 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "RR_calf_joint": 0.8,
             },
             dt=0.004,
-            base_stiffness=60.0,
+            base_stiffness=10.0, # 30.0, # 60.0,
             base_inertia=0.5,
         )
 

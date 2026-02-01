@@ -5,7 +5,7 @@ from typing import Dict, List
 
 
 @dataclass
-class SoftComplianceManagerCfg:
+class ComplianceManagerCfg:
     """Configuration for soft joint compliance using MSD model.
 
     Attributes:

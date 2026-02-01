@@ -2,25 +2,25 @@ from collections.abc import Sequence
 import torch
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.common import VecEnvStepReturn
-from compliance import SoftComplianceManager
+from compliance import ComplianceManager, ComplianceManagerCfg
 
 
 class CompliantRLEnv(ManagerBasedRLEnv):
-    """Custom RL environment with additional features."""
+    """RL environment with compliance support."""
 
     def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        # Initialize compliance manager if configured
-        self.soft_compliance_manager = None
+        # Initialize compliance manager if configured and enabled
+        self.compliance_manager = None
         if hasattr(cfg, 'compliance') and cfg.compliance.enabled:
-            self.soft_compliance_manager = SoftComplianceManager(cfg.compliance, self)
+            self.compliance_manager = ComplianceManager(cfg.compliance, self)
 
         # Initialize compliance force/torque buffers
         self._compliance_force_b = None
         self._compliance_torque_b = None
 
-        if self.soft_compliance_manager is not None:
+        if self.compliance_manager is not None:
             robot = self.scene["robot"]
             num_bodies = robot.num_bodies
             # Shape: (num_envs, num_bodies, 3)
@@ -93,6 +93,9 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # -- apply compliance (modifies joint positions based on external forces)
         self._apply_compliance()
 
+        # -- log compliance deformations
+        self._log_compliance_metrics()
+
         # -- compute observations
         self.obs_buf = self.observation_manager.compute(update_history=True)
 
@@ -100,32 +103,58 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
     def _apply_compliance(self):
         """Apply compliance deformations to the robot's joint positions."""
-        if self.soft_compliance_manager is None:
+        if self.compliance_manager is None:
+            print("Compliance is not supported")
             return
 
         # Compute deformations for active joints
-        deformations = self.soft_compliance_manager.compute(dt=self.physics_dt)
-
-        if deformations.shape[1] == 0:
-            # No active joints
-            return
+        deformations = self.compliance_manager.compute(dt=self.physics_dt)
 
         # Access the robot articulation
         robot = self.scene["robot"]
 
         # Apply deformations to the robot's joint positions
         current_positions = robot.data.joint_pos.clone()
-        for i, joint_idx in enumerate(self.soft_compliance_manager.active_joint_indices):
+        for i, joint_idx in enumerate(self.compliance_manager.active_joint_indices):
             current_positions[:, joint_idx] += deformations[:, i]
 
         # Write modified positions back to robot
         robot.write_joint_state_to_sim(current_positions, robot.data.joint_vel)
 
+    def _log_compliance_metrics(self):
+        """Log compliance-related metrics to extras for tensorboard."""
+        # Always ensure extras["log"] exists (RSL-RL expects it every step)
+        if "log" not in self.extras:
+            self.extras["log"] = {}
+
+        if self.compliance_manager is None or self.compliance_manager._deformations is None:
+            return
+
+        deformations = self.compliance_manager._deformations
+
+        # Log mean absolute deformation across all environments
+        self.extras["log"]["compliance/mean_deformation"] = deformations.abs().mean().item()
+
+        # Log max absolute deformation
+        self.extras["log"]["compliance/max_deformation"] = deformations.abs().max().item()
+
+        # Log RMS deformation
+        self.extras["log"]["compliance/rms_deformation"] = deformations.pow(2).mean().sqrt().item()
+
+        # Log per-joint mean deformations (averaged across environments)
+        joint_names = [
+            self.scene["robot"].joint_names[idx]
+            for idx in self.compliance_manager.active_joint_indices
+        ]
+        mean_per_joint = deformations.abs().mean(dim=0)
+        for i, name in enumerate(joint_names):
+            self.extras["log"][f"compliance/deformation_{name}"] = mean_per_joint[i].item()
+
     def _reset_idx(self, env_ids: Sequence[int]):
         """Reset environments based on specified indices."""
         # Reset compliance manager for these environments
-        if self.soft_compliance_manager is not None:
-            self.soft_compliance_manager.reset(env_ids)
+        if self.compliance_manager is not None:
+            self.compliance_manager.reset(env_ids)
             # Reset compliance buffers
             if self._compliance_force_b is not None:
                 self._compliance_force_b[env_ids] = 0.0
