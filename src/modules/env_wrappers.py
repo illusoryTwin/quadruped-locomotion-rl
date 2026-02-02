@@ -16,23 +16,6 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if hasattr(cfg, 'compliance') and cfg.compliance.enabled:
             self.compliance_manager = ComplianceManager(cfg.compliance, self)
 
-        # Initialize compliance force/torque buffers
-        self._compliance_force_b = None
-        self._compliance_torque_b = None
-
-        if self.compliance_manager is not None:
-            robot = self.scene["robot"]
-            num_bodies = robot.num_bodies
-            # Shape: (num_envs, num_bodies, 3)
-            self._compliance_force_b = torch.zeros(
-                (self.num_envs, num_bodies, 3),
-                device=self.device,
-            )
-            self._compliance_torque_b = torch.zeros(
-                (self.num_envs, num_bodies, 3),
-                device=self.device,
-            )
-
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         """Execute one time-step of the environment's dynamics and reset terminated environments."""
         # process actions
@@ -155,10 +138,6 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # Reset compliance manager for these environments
         if self.compliance_manager is not None:
             self.compliance_manager.reset(env_ids)
-            # Reset compliance buffers
-            if self._compliance_force_b is not None:
-                self._compliance_force_b[env_ids] = 0.0
-                self._compliance_torque_b[env_ids] = 0.0
 
         # Call parent reset
         super()._reset_idx(env_ids)

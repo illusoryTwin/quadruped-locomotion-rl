@@ -144,14 +144,9 @@ class SoftComplianceManager:
         # Transform Jacobian from world frame to body frame
         jacobians_b = self._transform_jacobian_world2body(jacobians_w, body_quat_w)
 
-        # Get wrenches from COMPLIANCE buffers
-        if hasattr(self._env, '_compliance_force_b') and self._env._compliance_force_b is not None:
-            forces_b = self._env._compliance_force_b[:, body_indices, :]
-            torques_b = self._env._compliance_torque_b[:, body_indices, :]
-        else:
-            # use standard buffers
-            forces_b = robot._external_force_b[:, body_indices, :]
-            torques_b = robot._external_torque_b[:, body_indices, :]
+        # Get external forces/torques applied to robot (from physics events)
+        forces_b = robot._external_force_b[:, body_indices, :]
+        torques_b = robot._external_torque_b[:, body_indices, :]
 
         num_envs = jacobians_b.shape[0]
         num_bodies = len(body_indices)
