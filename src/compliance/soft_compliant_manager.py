@@ -3,7 +3,7 @@ import torch
 import numpy as np
 
 from compliance.soft_compliance_manager_cfg import SoftComplianceManagerCfg
-from compliance.mass_sprint_damper_model import MSDSystem
+from src.compliance.mass_spring_damper_model import MSDSystem
 from isaaclab.utils.math import matrix_from_quat
 
 
