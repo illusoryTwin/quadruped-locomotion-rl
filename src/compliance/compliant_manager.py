@@ -18,7 +18,7 @@ class ComplianceManager:
         self._device = env.device
         self._num_envs = env.num_envs
 
-        # Monitored bodies - expand regex patterns to actual body names
+        # Monitored bodies - we apply forces on these bodies
         self._monitored_body_indices = self._expand_body_indices(cfg.monitored_bodies)
         self._monitored_body_names = [
             self._robot.body_names[i] for i in self._monitored_body_indices

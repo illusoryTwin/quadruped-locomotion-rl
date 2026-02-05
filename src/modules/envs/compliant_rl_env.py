@@ -17,7 +17,6 @@ class CompliantRLEnv(ManagerBasedRLEnv):
             self.compliance_manager = ComplianceManager(cfg.compliance, self)
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
-        """Execute one time-step of the environment's dynamics and reset terminated environments."""
         # process actions
         self.action_manager.process_action(action.to(self.device))
 
@@ -74,7 +73,7 @@ class CompliantRLEnv(ManagerBasedRLEnv):
             self.event_manager.apply(mode="interval", dt=self.step_dt)
 
         # -- apply compliance (modifies joint positions based on external forces)
-        self._apply_compliance()
+        self._apply_compliance_deformations()
 
         # -- log compliance deformations
         self._log_compliance_metrics()
@@ -84,7 +83,7 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
-    def _apply_compliance(self):
+    def _apply_compliance_deformations(self):
         """Apply compliance deformations to the robot's joint positions."""
         if self.compliance_manager is None:
             print("Compliance is not supported")
