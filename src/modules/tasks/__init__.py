@@ -11,7 +11,7 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": "envs.flat_walk_env_cfg:UnitreeGo2WalkEnvCfg",
+        "env_cfg_entry_point": "modules.tasks.flat_walk_env_cfg:UnitreeGo2WalkEnvCfg",
         "rsl_rl_cfg_entry_point": "algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
     },
 )
@@ -21,7 +21,7 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": "envs.rough_walk_env_cfg:UnitreeGo2WalkRoughEnvCfg",
+        "env_cfg_entry_point": "modules.tasks.rough_walk_env_cfg:UnitreeGo2WalkRoughEnvCfg",
         "rsl_rl_cfg_entry_point": "algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
     },
 )
@@ -31,17 +31,17 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": "envs.stairs_climbing_env_cfg:UnitreeGo2WalkStairsEnvCfg",
+        "env_cfg_entry_point": "modules.tasks.stairs_climbing_env_cfg:UnitreeGo2WalkStairsEnvCfg",
         "rsl_rl_cfg_entry_point": "algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
     },
 )
 
 gym.register(
     id="go2_compliant_locomotion",
-    entry_point="modules.env_wrappers:CompliantRLEnv",
+    entry_point="modules.envs.compliant_rl_env:CompliantRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": "envs.flat_walk_soft_env_cfg:UnitreeGo2WalkSoftEnvCfg",
+        "env_cfg_entry_point": "modules.tasks.flat_walk_soft_env_cfg:UnitreeGo2WalkSoftEnvCfg",
         "rsl_rl_cfg_entry_point": "algorithms.rsl_rl_ppo_cfg:UnitreeGo2SoftPPORunnerCfg",
     },
 ) 

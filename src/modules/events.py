@@ -14,7 +14,7 @@ def apply_compliance_force_torque(
 
     This function samples random forces and torques and writes them to the environment's
     compliance buffers (_compliance_force_b and _compliance_torque_b) which are used
-    by the SoftComplianceManager to compute joint deformations.
+    by the ComplianceManager to compute joint deformations.
     """
     # Check if compliance buffers exist
     if not hasattr(env, '_compliance_force_b') or env._compliance_force_b is None:
