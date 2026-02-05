@@ -2,18 +2,20 @@ from isaaclab.utils import configclass
 
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg, RslRlPpoActorCriticCfg
 
-@configclass 
+@configclass
 class UnitreeGo2PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1500 
-    save_interval = 50 
+    max_iterations = 1500
+    save_interval = 50
     experiment_name = "unitree_go2_walk"
-    empirical_normalization = True
+    empirical_normalization = True  # For RSL_RL 2.x compatibility
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 256],
         activation="elu",
+        actor_obs_normalization=True,   # RSL_RL 3.x: normalize actor observations
+        critic_obs_normalization=True,  # RSL_RL 3.x: normalize critic observations
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
@@ -38,4 +40,13 @@ class UnitreeGo2PPORunnerCfg(UnitreeGo2PPORunnerCfg):
         super().__post_init__()
 
         self.experiment_name = "unitree_go2_walk"
+        self.max_iterations = 2500
+
+
+@ configclass 
+class UnitreeGo2SoftPPORunnerCfg(UnitreeGo2PPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "unitree_go2_walk_soft"
         self.max_iterations = 2500

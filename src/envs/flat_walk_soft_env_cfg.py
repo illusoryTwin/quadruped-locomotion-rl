@@ -21,6 +21,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
+from compliance.soft_compliance_manager_cfg import SoftComplianceManagerCfg
 
 
 def feet_air_time(
@@ -145,9 +146,6 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    reset_scene = mdp.reset_scene_to_default
-    reset_robot_joints = mdp.reset_joints_by_offset
-
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
@@ -220,15 +218,36 @@ class CurriculumCfg:
 
 
 @configclass 
-class UnitreeGo2WalkEnvCfg(LocomotionVelocityRoughEnvCfg):
+class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
         scene: RoughTerrainSceneCfg = RoughTerrainSceneCfg(num_envs=4096, env_spacing=2.5)
         commands: CommandsCfg = CommandsCfg()
         actions: ActionsCfg = ActionsCfg()
         observations: ObservationsCfg = ObservationsCfg()
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
-        event: EventCfg = EventCfg()
+        events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
+
+        compliance: SoftComplianceManagerCfg = SoftComplianceManagerCfg(
+            monitored_bodies=["base"], #, "FL_calf", "FR_calf", "RL_calf", "RR_calf"],
+            stiffness_config={
+                "FL_hip_joint": 1.0,
+                "FL_thigh_joint": 1.0,
+                "FL_calf_joint": 0.8,
+                "FR_hip_joint": 1.0,
+                "FR_thigh_joint": 1.0,
+                "FR_calf_joint": 0.8,
+                "RL_hip_joint": 1.0,
+                "RL_thigh_joint": 1.0,
+                "RL_calf_joint": 0.8,
+                "RR_hip_joint": 1.0,
+                "RR_thigh_joint": 1.0,
+                "RR_calf_joint": 0.8,
+            },
+            dt=0.004,
+            base_stiffness=60.0,
+            base_inertia=0.5,
+        )
 
         def __post_init__(self):
             self.decimation = 4

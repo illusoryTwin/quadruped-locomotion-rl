@@ -9,6 +9,10 @@
 
 import argparse
 import sys
+import os
+
+# Add project root to path for local imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from isaaclab.app import AppLauncher
 
@@ -54,7 +58,6 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import gymnasium as gym
-import os
 import time
 import torch
 
@@ -77,7 +80,7 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
-import tasks  # noqa: F401  # Register custom environments
+import envs  # noqa: F401  # Register custom environments
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)

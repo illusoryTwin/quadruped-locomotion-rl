@@ -1,0 +1,123 @@
+# Go2 Flat Terrain Config WITH Observation History
+# Example showing how to enable history stacking
+#
+# NOTE: This config is for demonstration. Your policy must be TRAINED
+# with observation history to use this config. If your policy was trained
+# with single-frame observations, use go2_flat_modular.yaml instead.
+
+robot: go2
+
+checkpoint: logs/rsl_rl/unitree_go2_walk/2026-01-25_23-43-51/exported/policy.pt
+
+joint_order:
+  - FL_hip_joint
+  - FR_hip_joint
+  - RL_hip_joint
+  - RR_hip_joint
+  - FL_thigh_joint
+  - FR_thigh_joint
+  - RL_thigh_joint
+  - RR_thigh_joint
+  - FL_calf_joint
+  - FR_calf_joint
+  - RL_calf_joint
+  - RR_calf_joint
+
+init_state:
+  default_joint_angles:
+    FL_hip_joint: 0.1
+    FR_hip_joint: -0.1
+    RL_hip_joint: 0.1
+    RR_hip_joint: -0.1
+    FL_thigh_joint: 0.8
+    FR_thigh_joint: 0.8
+    RL_thigh_joint: 1.0
+    RR_thigh_joint: 1.0
+    FL_calf_joint: -1.5
+    FR_calf_joint: -1.5
+    RL_calf_joint: -1.5
+    RR_calf_joint: -1.5
+
+# Observation configuration WITH HISTORY
+observation:
+  order:
+    - base_ang_vel
+    - projected_gravity
+    - commands
+    - dof_pos
+    - dof_vel
+    - actions
+
+  dims:
+    base_ang_vel: 3
+    projected_gravity: 3
+    commands: 3
+    dof_pos: 12
+    dof_vel: 12
+    actions: 12
+  # Total single-frame: 45 dims
+
+  scale:
+    base_ang_vel: 1.0
+    projected_gravity: 1.0
+    commands: 1.0
+    dof_pos: 1.0
+    dof_vel: 1.0
+    actions: 1.0
+
+  clip:
+    base_ang_vel: .inf
+    projected_gravity: .inf
+    commands: .inf
+    dof_pos: .inf
+    dof_vel: .inf
+    actions: .inf
+
+  # ----- HISTORY SETTINGS -----
+  # Option 1: Global history (all terms stacked together)
+  # num_obs_hist: 5 -> observation = 45 * 5 = 225 dims
+  # hist_by_term: false
+
+  # Option 2: Per-term history (different history length per term)
+  # Useful when some terms need more history than others
+  num_obs_hist:
+    base_ang_vel: 3     # 3 frames of angular velocity
+    projected_gravity: 1 # single frame (doesn't change fast)
+    commands: 1          # single frame
+    dof_pos: 5          # 5 frames of joint positions
+    dof_vel: 5          # 5 frames of joint velocities
+    actions: 3          # 3 frames of actions
+  hist_by_term: true
+  # Total: 3*3 + 3*1 + 3*1 + 12*5 + 12*5 + 12*3 = 9+3+3+60+60+36 = 171 dims
+
+control:
+  control_type: P
+  action_scale: 0.5
+  clip_actions: 1.0
+  control_dt: 0.02
+
+  stiffness:
+    hip: 25.0
+    thigh: 25.0
+    calf: 25.0
+  damping:
+    hip: 0.5
+    thigh: 0.5
+    calf: 0.5
+
+  limit_actions_by_torque: false
+
+commands:
+  names: [vx, vy, wz]
+  ranges:
+    vx: [-1.5, 1.5]
+    vy: [-1.0, 1.0]
+    wz: [-1.5, 1.5]
+  defaults:
+    vx: 0.5
+    vy: 0.0
+    wz: 0.0
+
+dds:
+  domain_id: 1
+  interface: lo
