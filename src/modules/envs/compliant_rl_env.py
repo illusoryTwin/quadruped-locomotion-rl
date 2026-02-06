@@ -92,16 +92,9 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # Compute deformations for active joints
         deformations = self.compliance_manager.compute(dt=self.physics_dt)
 
-        # Access the robot articulation
         robot = self.scene["robot"]
-
-        # Apply deformations to the robot's joint positions
-        current_positions = robot.data.joint_pos.clone()
         for i, joint_idx in enumerate(self.compliance_manager.active_joint_indices):
-            current_positions[:, joint_idx] += deformations[:, i]
-
-        # Write modified positions back to robot
-        robot.write_joint_state_to_sim(current_positions, robot.data.joint_vel)
+            robot._data.joint_pos_target[:, joint_idx] += deformations[:, i]
 
     def _log_compliance_metrics(self):
         """Log compliance-related metrics to extras for tensorboard."""
