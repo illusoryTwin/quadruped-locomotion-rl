@@ -34,7 +34,7 @@ class ComplianceManager:
         self._joint_mask = create_joint_mask(
             num_joints=self._robot.num_joints,
             active_joint_indices=self._active_joint_indices,
-            fix_base=True,
+            fix_base=False,
             device=self._device,
         )
 
