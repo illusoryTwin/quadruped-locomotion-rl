@@ -37,6 +37,8 @@ def calculate_external_torques(
     body_names: list[str],
     joint_mask: torch.Tensor | None = None,
     verbose: bool = False,
+    cached_forces_b: torch.Tensor | None = None,
+    cached_torques_b: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Calculate joint torques from external forces on specified bodies.
 
@@ -47,6 +49,8 @@ def calculate_external_torques(
         body_names: List of body names to calculate torques for
         joint_mask: Optional boolean mask [num_dofs] to zero out inactive joints
         verbose: Print debug information
+        cached_forces_b: Pre-cached forces in body frame (if None, reads from robot._external_force_b).
+        cached_torques_b: Pre-cached torques in body frame (if None, reads from robot._external_torque_b).
 
     Returns:
         Joint torques [num_envs, num_dofs]
@@ -56,9 +60,13 @@ def calculate_external_torques(
     # Get Jacobian in world frame
     jacobians_w = robot.root_physx_view.get_jacobians()[:, body_indices, :, :]
 
-    # Get wrenches in body frame
-    forces_b = robot._external_force_b[:, body_indices, :]
-    torques_b = robot._external_torque_b[:, body_indices, :]
+    # Use cached forces if provided
+    if cached_forces_b is not None:
+        forces_b = cached_forces_b
+        torques_b = cached_torques_b
+    else:
+        forces_b = robot._external_force_b[:, body_indices, :]
+        torques_b = robot._external_torque_b[:, body_indices, :]
 
     body_quat_w = robot.data.body_quat_w[:, body_indices, :]
 

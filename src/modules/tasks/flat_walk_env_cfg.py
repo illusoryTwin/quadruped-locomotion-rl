@@ -183,10 +183,10 @@ class RewardsCfg:
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
     # -- penalties
-    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
-    # dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
+    dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
 
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
