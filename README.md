@@ -102,6 +102,17 @@ Visualize trained policy in Isaac Sim:
 ```bash
 ../../IsaacLab/isaaclab.sh -p scripts/play.py --task=go2_walk_flat --num_envs=16
 ```
+## Compliant Policies
+
+To launch a policy which is supposed to be compliant, aka soft, use the following command. 
+
+```bash
+# Activate Isaac Sim environment
+conda activate isaacsim
+
+# Train flat terrain walking
+../../IsaacLab/isaaclab.sh -p scripts/train.py --task=go2_compliant_locomotion --num_envs=4096 --max_iterations=5000
+```
 
 ## Deployment (MuJoCo)
 
