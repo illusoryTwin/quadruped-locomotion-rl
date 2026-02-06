@@ -16,6 +16,9 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if hasattr(cfg, 'compliance') and cfg.compliance.enabled:
             self.compliance_manager = ComplianceManager(cfg.compliance, self)
 
+        # deformed joint position targets for use in reward computation
+        self._compliant_joint_targets = None
+
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         # process actions
         self.action_manager.process_action(action.to(self.device))
@@ -49,6 +52,10 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         self.reset_buf = self.termination_manager.compute()
         self.reset_terminated = self.termination_manager.terminated
         self.reset_time_outs = self.termination_manager.time_outs
+
+        # -- compute compliant targets before rewards so the reward can use them
+        self._compute_compliance_targets()
+
         # -- reward computation
         self.reward_buf = self.reward_manager.compute(dt=self.step_dt)
 
@@ -72,9 +79,6 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
 
-        # -- apply compliance (modifies joint positions based on external forces)
-        self._apply_compliance_deformations()
-
         # -- log compliance deformations
         self._log_compliance_metrics()
 
@@ -83,18 +87,25 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
-    def _apply_compliance_deformations(self):
-        """Apply compliance deformations to the robot's joint positions."""
+    def _compute_compliance_targets(self):
+        """Compute compliant joint position targets from deformations.
+
+        Stores deformed targets on self._compliant_joint_targets for use
+        by the reward function. Does NOT modify PD targets — the policy
+        must learn to reach these positions through reward shaping.
+        """
         if self.compliance_manager is None:
-            print("Compliance is not supported")
             return
 
-        # Compute deformations for active joints
         deformations = self.compliance_manager.compute(dt=self.physics_dt)
 
         robot = self.scene["robot"]
+
+        targets = robot._data.joint_pos_target.clone()
         for i, joint_idx in enumerate(self.compliance_manager.active_joint_indices):
-            robot._data.joint_pos_target[:, joint_idx] += deformations[:, i]
+            targets[:, joint_idx] += deformations[:, i]
+
+        self._compliant_joint_targets = targets
 
     def _log_compliance_metrics(self):
         """Log compliance-related metrics to extras for tensorboard."""

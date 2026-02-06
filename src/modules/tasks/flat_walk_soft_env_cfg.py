@@ -23,6 +23,24 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.envs import ManagerBasedRLEnv
 from compliance.compliance_manager_cfg import ComplianceManagerCfg
 
+def track_compliant_joint_targets_exp(
+    env: ManagerBasedRLEnv,
+    std: float = 0.1,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward for tracking MSD-deformed joint position targets.
+
+    Uses exponential kernel: exp(-||actual_pos - compliant_target||^2 / std^2)
+    Returns zero if compliance is not active.
+    """
+    if not hasattr(env, '_compliant_joint_targets') or env._compliant_joint_targets is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    asset = env.scene[asset_cfg.name]
+    error = asset.data.joint_pos - env._compliant_joint_targets
+    return torch.exp(-torch.sum(error * error, dim=1) / (std * std))
+
+
 def feet_air_time(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
 ) -> torch.Tensor:
@@ -210,6 +228,11 @@ class RewardsCfg:
     # -- penalties
     # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    track_compliant_targets = RewardTerm(
+        func=track_compliant_joint_targets_exp,
+        weight=0.5,
+        params={"std": 0.25},
+    )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
 
