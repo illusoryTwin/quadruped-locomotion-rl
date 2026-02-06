@@ -16,17 +16,6 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if hasattr(cfg, 'compliance') and cfg.compliance.enabled:
             self.compliance_manager = ComplianceManager(cfg.compliance, self)
 
-        # Cached force buffers — stores forces BEFORE write_data_to_sim() clears them
-        self._cached_force_b = None
-        self._cached_torque_b = None
-
-        if self.compliance_manager is not None:
-            num_monitored = len(self.compliance_manager.monitored_body_indices)
-            self._cached_force_b = torch.zeros(
-                (self.num_envs, num_monitored, 3), device=self.device
-            )
-            self._cached_torque_b = torch.zeros_like(self._cached_force_b)
-
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         # process actions
         self.action_manager.process_action(action.to(self.device))
@@ -36,27 +25,12 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # check if we need to do rendering within the physics loop
         is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
 
-        # Cache external forces before the decimation loop clears them.
-        # Otherwise they will be only applied for the first sub-step.
-        robot = self.scene["robot"]
-        has_compliance = self._cached_force_b is not None
-        if has_compliance:
-            body_indices = self.compliance_manager.monitored_body_indices
-            self._cached_force_b[:] = robot._external_force_b[:, body_indices, :]
-            self._cached_torque_b[:] = robot._external_torque_b[:, body_indices, :]
-
         # perform physics stepping
         for _ in range(self.cfg.decimation):
             self._sim_step_counter += 1
             # set actions into buffers
             self.action_manager.apply_action()
-
-            # Re-apply cached forces so they persist across all sub-steps
-            if has_compliance:
-                robot._external_force_b[:, body_indices, :] = self._cached_force_b
-                robot._external_torque_b[:, body_indices, :] = self._cached_torque_b
-
-            # set actions into simulator (sends forces to PhysX, then clears buffer)
+            # set actions into simulator
             self.scene.write_data_to_sim()
             # simulate
             self.sim.step(render=False)
@@ -115,12 +89,8 @@ class CompliantRLEnv(ManagerBasedRLEnv):
             print("Compliance is not supported")
             return
 
-        # Compute deformations
-        deformations = self.compliance_manager.compute(
-            dt=self.physics_dt,
-            cached_forces=self._cached_force_b,
-            cached_torques=self._cached_torque_b,
-        )
+        # Compute deformations for active joints
+        deformations = self.compliance_manager.compute(dt=self.physics_dt)
 
         # Access the robot articulation
         robot = self.scene["robot"]
@@ -167,11 +137,6 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # Reset compliance manager for these environments
         if self.compliance_manager is not None:
             self.compliance_manager.reset(env_ids)
-
-        # Reset cached force buffers so that they don't leak into new episodes
-        if self._cached_force_b is not None:
-            self._cached_force_b[env_ids] = 0
-            self._cached_torque_b[env_ids] = 0
 
         # Call parent reset
         super()._reset_idx(env_ids)

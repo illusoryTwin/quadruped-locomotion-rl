@@ -103,18 +103,11 @@ class ComplianceManager:
         if self._msd_system is not None:
             self._msd_system.reset(env_ids)
 
-    def compute(
-        self,
-        dt: float,
-        cached_forces: torch.Tensor | None = None,
-        cached_torques: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    def compute(self, dt: float) -> torch.Tensor:
         """Compute joint deformations from external forces.
 
         Args:
             dt: Time step (unused, MSD uses its own dt from config)
-            cached_forces
-            cached_torques
 
         Returns:
             Joint deformations [num_envs, num_active_joints]
@@ -128,8 +121,6 @@ class ComplianceManager:
             body_names=self._monitored_body_names,
             joint_mask=self._joint_mask,
             verbose=False,
-            cached_forces_b=cached_forces,
-            cached_torques_b=cached_torques,
         )
 
         # Update MSD system and get deformations
