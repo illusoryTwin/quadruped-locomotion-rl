@@ -97,7 +97,17 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if self.compliance_manager is None:
             return
 
-        deformations = self.compliance_manager.compute(dt=self.physics_dt)
+        # Read per-env stiffness from command if available
+        base_stiffness = None
+        try:
+            kp_cmd = self.command_manager.get_command("stiffness")
+            base_stiffness = kp_cmd[:, 0]  # [num_envs]
+        except (KeyError, RuntimeError):
+            pass
+
+        deformations = self.compliance_manager.compute(
+            dt=self.physics_dt, base_stiffness=base_stiffness
+        )
 
         robot = self.scene["robot"]
 

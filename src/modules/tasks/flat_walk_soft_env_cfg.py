@@ -22,6 +22,8 @@ from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
 from compliance.compliance_manager_cfg import ComplianceManagerCfg
+from modules.events import apply_compliance_force_torque
+from modules.commands.stiffness_command import StiffnessCommandCfg
 
 def track_compliant_joint_targets_exp(
     env: ManagerBasedRLEnv,
@@ -105,7 +107,7 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
     )
 
 
-@configclass 
+@configclass
 class CommandsCfg:
     base_velocity =  mdp.UniformVelocityCommandCfg(
         asset_name="robot",
@@ -116,6 +118,11 @@ class CommandsCfg:
             ang_vel_z=(-1.5, 1.5),
             heading=(-math.pi, math.pi)
         )
+    )
+
+    stiffness = StiffnessCommandCfg(
+        resampling_time_range=(5.0, 10.0),
+        ranges=StiffnessCommandCfg.Ranges(kp=(5.0, 20.0)),
     )
 
 
@@ -150,8 +157,12 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             noise=Unoise(n_min=-0.1, n_max=0.1)
         )
+        stiffness_cmd = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "stiffness"},
+        )
 
-    @configclass 
+    @configclass
     class CriticCfg(PolicyCfg):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.15, n_max=0.15), scale=1.0)
 
@@ -199,17 +210,52 @@ class EventCfg:
     #     },
     # )
 
+    # # Apply real physical forces - compliance manager will read these
+    # push_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval",
+    #     interval_range_s=(0.1, 0.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-3.0, 3.0),
+    #     },
+    # )
+
+    pull_robot = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="interval",
+        interval_range_s=(3.0, 5.5),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
+            "force_range": (-10.0, 10.0),
+            "torque_range": (-3.0, 3.0),
+        },
+    )
+
     # Apply real physical forces - compliance manager will read these
     push_robot = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="interval",
-        interval_range_s=(0.1, 0.5),
+        interval_range_s=(0.1, 2.5),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
             "force_range": (-10.0, 10.0),
             "torque_range": (-3.0, 3.0),
         },
     )
+
+    # # Apply forces/torques to compliance buffers for MSD deformation
+    # compliance_push = EventTerm(
+    #     func=apply_compliance_force_torque,
+    #     mode="interval",
+    #     interval_range_s=(0.1, 2.0), # 0.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-3.0, 3.0),
+    #     },
+    # )
 
 
 @configclass 
@@ -230,7 +276,7 @@ class RewardsCfg:
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     track_compliant_targets = RewardTerm(
         func=track_compliant_joint_targets_exp,
-        weight=0.5,
+        weight=0.75, # 1.5, # 0.5,
         params={"std": 0.25},
     )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
@@ -238,15 +284,15 @@ class RewardsCfg:
 
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
-    feet_air_time = RewardTerm(
-        func=feet_air_time,
-        weight=0.25,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": "base_velocity",
-            "threshold": 0.5,
-        },
-    )
+    # feet_air_time = RewardTerm(
+    #     func=feet_air_time,
+    #     weight=0.25,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+    #         "command_name": "base_velocity",
+    #         "threshold": 0.5,
+    #     },
+    # )
 
 
 @configclass

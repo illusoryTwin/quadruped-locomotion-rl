@@ -103,11 +103,14 @@ class ComplianceManager:
         if self._msd_system is not None:
             self._msd_system.reset(env_ids)
 
-    def compute(self, dt: float) -> torch.Tensor:
+    def compute(self, dt: float, base_stiffness: torch.Tensor | None = None) -> torch.Tensor:
         """Compute joint deformations from external forces.
 
         Args:
             dt: Time step (unused, MSD uses its own dt from config)
+            base_stiffness: Per-env base stiffness
+                If provided, uses analytical per-env MSD update.
+                If None, uses precomputed matrices with fixed stiffness from config.
 
         Returns:
             Joint deformations [num_envs, num_active_joints]
@@ -124,7 +127,10 @@ class ComplianceManager:
         )
 
         # Update MSD system and get deformations
-        self._msd_system.update_msd_state_discrete(joint_torques)
+        if base_stiffness is not None:
+            self._msd_system.update_with_variable_stiffness(joint_torques, base_stiffness)
+        else:
+            self._msd_system.update_msd_state_discrete(joint_torques)
 
         # Get deformations for active DOFs
         deformations = self._msd_system.state['q_def']

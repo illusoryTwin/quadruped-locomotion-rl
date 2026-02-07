@@ -190,6 +190,11 @@ class MassSpringDamperModel:
         # Convert active_idx to torch for indexing
         self.active_idx_torch = torch.tensor(self.active_idx, dtype=torch.long, device=device)
 
+        # Store per-DOF parameters as torch tensors for the analytical path
+        scales_ordered = [stiffness_scales[idx] for idx in self.active_idx]
+        self._scales_t = torch.tensor(scales_ordered, dtype=torch.float32, device=device)
+        self._M_active_t = torch.tensor(self.M[self.active_idx], dtype=torch.float32, device=device)
+
         # MSD state: batched [num_envs, n_active] for q_def and qd_def
         self.state = self._create_msd_state()
 
@@ -275,6 +280,56 @@ class MassSpringDamperModel:
         # x_next shape: [num_envs, 2*n_active] where first n_active cols are q_def
         self.state["q_def"][:] = x_next[:, :self.n_active]
         self.state["qd_def"][:] = x_next[:, self.n_active:]
+
+    def update_with_variable_stiffness(
+        self, external_torques: torch.Tensor, base_stiffness: torch.Tensor
+    ):
+        """Update MSD state using per-env stiffness via analytical critically-damped solution.
+
+        For a critically-damped 2nd order system (D = 2*sqrt(M*K)), the exact
+        discrete update per DOF is computed analytically without matrix expm.
+        This allows each environment to have a different base_stiffness value.
+
+        Args:
+            external_torques: External torques [num_envs, n_dofs] - full DOF vector
+            base_stiffness: Per-env base stiffness [num_envs] or [num_envs, 1]
+        """
+        if self.n_active == 0:
+            return
+
+        external_torques = external_torques.to(device=self.device)
+        tau = external_torques[:, self.active_idx_torch]  # [num_envs, n_active]
+
+        # Reshape base_stiffness to [num_envs, 1] for broadcasting
+        kp = base_stiffness.view(-1, 1).to(device=self.device)
+
+        # Per-env, per-DOF stiffness: K[e,j] = kp[e] * scale[j]
+        K = kp * self._scales_t  # [num_envs, n_active]
+        M = self._M_active_t     # [n_active] broadcasts
+
+        # Natural frequency and decay
+        omega = torch.sqrt(K / M)           # [num_envs, n_active]
+        alpha = torch.exp(-omega * self.dt)  # [num_envs, n_active]
+        odt = omega * self.dt                # [num_envs, n_active]
+
+        q = self.state["q_def"]
+        qd = self.state["qd_def"]
+
+        # Analytical discrete-time coefficients for critically-damped system
+        # Ad = exp(-w*dt) * [[1+w*dt, dt], [-w^2*dt, 1-w*dt]]
+        # Bd = [[(1 - alpha*(1+w*dt)) / (w^2 * M)], [alpha*dt / M]]
+        ad11 = alpha * (1.0 + odt)
+        ad12 = alpha * self.dt
+        ad21 = -alpha * omega * omega * self.dt
+        ad22 = alpha * (1.0 - odt)
+
+        # Clamp omega away from zero to avoid division by zero for zero-stiffness DOFs
+        omega_sq_safe = torch.clamp(omega * omega, min=1e-12)
+        bd1 = (1.0 - ad11) / (omega_sq_safe * M)
+        bd2 = alpha * self.dt / M
+
+        self.state["q_def"][:] = ad11 * q + ad12 * qd + bd1 * tau
+        self.state["qd_def"][:] = ad21 * q + ad22 * qd + bd2 * tau
 
     def reset(self, env_ids: torch.Tensor = None):
         """Reset MSD state to zero for specified environments."""

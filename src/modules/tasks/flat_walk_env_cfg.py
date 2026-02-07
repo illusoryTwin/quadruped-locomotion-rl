@@ -190,15 +190,15 @@ class RewardsCfg:
 
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
-    feet_air_time = RewardTerm(
-        func=feet_air_time,
-        weight=0.25,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": "base_velocity",
-            "threshold": 0.5,
-        },
-    )
+    # feet_air_time = RewardTerm(
+    #     func=feet_air_time,
+    #     weight=0.25,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+    #         "command_name": "base_velocity",
+    #         "threshold": 0.5,
+    #     },
+    # )
 
 
 @configclass
