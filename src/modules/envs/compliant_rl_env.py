@@ -127,24 +127,64 @@ class CompliantRLEnv(ManagerBasedRLEnv):
             return
 
         deformations = self.compliance_manager._deformations
+        robot = self.scene["robot"]
+        active_indices = self.compliance_manager.active_joint_indices
+        joint_names = [robot.joint_names[idx] for idx in active_indices]
 
-        # Log mean absolute deformation across all environments
+        # --- Deformation stats ---
         self.extras["log"]["compliance/mean_deformation"] = deformations.abs().mean().item()
-
-        # Log max absolute deformation
         self.extras["log"]["compliance/max_deformation"] = deformations.abs().max().item()
-
-        # Log RMS deformation
         self.extras["log"]["compliance/rms_deformation"] = deformations.pow(2).mean().sqrt().item()
 
-        # Log per-joint mean deformations (averaged across environments)
-        joint_names = [
-            self.scene["robot"].joint_names[idx]
-            for idx in self.compliance_manager.active_joint_indices
-        ]
         mean_per_joint = deformations.abs().mean(dim=0)
         for i, name in enumerate(joint_names):
             self.extras["log"][f"compliance/deformation_{name}"] = mean_per_joint[i].item()
+
+        # --- Tracking comparison: default (PD target) vs compliant vs actual ---
+        actual_pos = robot.data.joint_pos  # [num_envs, num_joints]
+        default_target = robot._data.joint_pos_target  # [num_envs, num_joints]
+
+        if self._compliant_joint_targets is not None:
+            compliant_target = self._compliant_joint_targets
+
+            # Per-joint errors averaged across envs (only active joints)
+            for i, (idx, name) in enumerate(zip(active_indices, joint_names)):
+                default_err = (actual_pos[:, idx] - default_target[:, idx]).abs().mean().item()
+                compliant_err = (actual_pos[:, idx] - compliant_target[:, idx]).abs().mean().item()
+                deform_val = deformations[:, i].mean().item()
+
+                self.extras["log"][f"tracking/default_error_{name}"] = default_err
+                self.extras["log"][f"tracking/compliant_error_{name}"] = compliant_err
+                self.extras["log"][f"tracking/deformation_signed_{name}"] = deform_val
+
+            # Aggregate errors across active joints
+            default_err_all = torch.zeros(self.num_envs, device=self.device)
+            compliant_err_all = torch.zeros(self.num_envs, device=self.device)
+            for i, idx in enumerate(active_indices):
+                default_err_all += (actual_pos[:, idx] - default_target[:, idx]).pow(2)
+                compliant_err_all += (actual_pos[:, idx] - compliant_target[:, idx]).pow(2)
+
+            self.extras["log"]["tracking/mean_default_error"] = default_err_all.sqrt().mean().item()
+            self.extras["log"]["tracking/mean_compliant_error"] = compliant_err_all.sqrt().mean().item()
+
+            # Log the actual reward value (before weight) for debugging
+            std = 0.25  # match the reward config
+            reward_raw = torch.exp(-compliant_err_all / (std * std))
+            self.extras["log"]["tracking/compliant_reward_raw"] = reward_raw.mean().item()
+            reward_default = torch.exp(-default_err_all / (std * std))
+            self.extras["log"]["tracking/default_reward_raw"] = reward_default.mean().item()
+
+        # --- Stiffness command ---
+        try:
+            kp_cmd = self.command_manager.get_command("stiffness")
+            self.extras["log"]["compliance/stiffness_kp_mean"] = kp_cmd.mean().item()
+        except (KeyError, RuntimeError):
+            pass
+
+        # --- External forces on monitored bodies ---
+        monitored_indices = self.compliance_manager.monitored_body_indices
+        forces = robot._external_force_b[:, monitored_indices, :]
+        self.extras["log"]["compliance/ext_force_norm"] = forces.norm(dim=-1).mean().item()
 
     def _reset_idx(self, env_ids: Sequence[int]):
         """Reset environments based on specified indices."""

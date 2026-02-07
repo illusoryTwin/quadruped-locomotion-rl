@@ -239,7 +239,7 @@ class EventCfg:
         mode="interval",
         interval_range_s=(0.1, 2.5),
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
             "force_range": (-10.0, 10.0),
             "torque_range": (-3.0, 3.0),
         },
@@ -277,7 +277,7 @@ class RewardsCfg:
     track_compliant_targets = RewardTerm(
         func=track_compliant_joint_targets_exp,
         weight=0.75, # 1.5, # 0.5,
-        params={"std": 0.25},
+        params={"std": 0.5}, # 0.25},
     )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
@@ -322,7 +322,7 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         compliance: ComplianceManagerCfg = ComplianceManagerCfg(
             enabled=True,
-            monitored_bodies=["base"], #, "FL_calf", "FR_calf", "RL_calf", "RR_calf"],
+            monitored_bodies=["FL_calf", "FR_calf", "RL_calf", "RR_calf"],
             stiffness_config={
                 "FL_hip_joint": 1.0,
                 "FL_thigh_joint": 1.0,
