@@ -54,7 +54,7 @@ class MassSpringDamperModel:
         # Convert active_idx to torch for indexing
         self.active_idx_torch = torch.tensor(self.active_idx, dtype=torch.long, device=device)
 
-        # MSD state: batched [num_envs, n_active] for q_def and qd_def
+        # MSD state: batched [num_envs, n_active] for q_def and dx_def
         self.state = self._create_msd_state()
 
     def set_stiffness(self, base_stiffness: float):
@@ -77,10 +77,10 @@ class MassSpringDamperModel:
         self.Bd = torch.tensor(Bd_np, dtype=torch.float32, device=self.device)
 
     def _create_msd_state(self):
-        """Create MSD state dictionary for tracking deformations (only active DOFs)."""
+        """Create MSD state dictionary for tracking deformations in task space."""
         return {
-            'q_def': torch.zeros((self.num_envs, self.n_active), dtype=torch.float32, device=self.device),
-            'qd_def': torch.zeros((self.num_envs, self.n_active), dtype=torch.float32, device=self.device),
+            'x_def': torch.zeros((self.num_envs, self.n_active), dtype=torch.float32, device=self.device),
+            'dx_def': torch.zeros((self.num_envs, self.n_active), dtype=torch.float32, device=self.device),
         }
 
     def get_state_dict(self):
@@ -127,40 +127,39 @@ class MassSpringDamperModel:
 
         return Ad, Bd
 
-    def update_msd_state_discrete(self, external_torques: torch.Tensor):
+    def update_msd_state_discrete(self, external_forces: torch.Tensor):
         """
         Update Mass-Spring-Damper state using analytical discrete-time solution.
         Batched computation for all environments.
 
         Uses precomputed discrete-time state-space matrices:
             x[k+1] = Ad*x[k] + Bd*u[k]
-            where x = [q_def; qd_def], u = tau_ext (active DOFs only)
+            where x = [x_def; dx_def], u = tau_ext (active DOFs only)
 
         Args:
-            external_torques: External torques on joints [num_envs, n_dofs] - full DOF vector
+            external_forces: External forces on joints [num_envs, n_dofs] - full DOF vector
         """
         if self.n_active == 0:
             return  # No active DOFs
 
-        # Ensure torques are on the correct device
-        external_torques = external_torques.to(device=self.device)
+        # Ensure forces are on the correct device
+        external_forces = external_forces.to(device=self.device)
 
-        # Extract only active DOF torques: [num_envs, n_active]
-        external_torques_active = external_torques[:, self.active_idx_torch]
+        # Extract only active DOF forces: [num_envs, n_active]
+        external_forces_active = external_forces[:, self.active_idx_torch]
 
-        # Pack state vector: x = [q_def; qd_def] (active DOFs only)
-        x = torch.cat([self.state["q_def"], self.state["qd_def"]], dim=1)
+        # Pack state vector: x = [x_def; dx_def] (active DOFs only)
+        x = torch.cat([self.state["x_def"], self.state["dx_def"]], dim=1)
 
         # Discrete-time state update: x[k+1] = Ad @ x[k] + Bd @ u[k]
-        x_next = x @ self.Ad.T + external_torques_active @ self.Bd.T
+        x_next = x @ self.Ad.T + external_forces_active @ self.Bd.T
 
         # Unpack state vector (active DOFs only)
-        # x_next shape: [num_envs, 2*n_active] where first n_active cols are q_def
-        self.state["q_def"][:] = x_next[:, :self.n_active]
-        self.state["qd_def"][:] = x_next[:, self.n_active:]
+        self.state["x_def"][:] = x_next[:, :self.n_active]
+        self.state["dx_def"][:] = x_next[:, self.n_active:]
 
     def update_with_variable_stiffness(
-        self, external_torques: torch.Tensor, base_stiffness: torch.Tensor
+        self, external_forces: torch.Tensor, base_stiffness: torch.Tensor
     ):
         """Update MSD state with per-environment variable stiffness.
 
@@ -168,14 +167,14 @@ class MassSpringDamperModel:
         Each DOF is independent, so we compute per-env stiffness scaling.
 
         Args:
-            external_torques: External torques [num_envs, n_dofs]
+            external_forces: External forces [num_envs, n_dofs]
             base_stiffness: Per-env base stiffness [num_envs]
         """
         if self.n_active == 0:
             return
 
-        external_torques = external_torques.to(device=self.device)
-        external_torques_active = external_torques[:, self.active_idx_torch]
+        external_forces = external_forces.to(device=self.device)
+        external_forces_active = external_forces[:, self.active_idx_torch]
 
         # Per-DOF stiffness scales (from config): [n_active]
         scales = torch.tensor(
@@ -194,17 +193,17 @@ class MassSpringDamperModel:
         D = 2.0 * torch.sqrt(M * K)
 
         # Analytical 2nd-order critically damped discrete update:
-        # For each DOF independently: m*q'' + d*q' + k*q = tau
+        # For each DOF independently: m*q'' + d*q' + k*q = F
         # omega = sqrt(k/m), state update via exact discretization
         omega = torch.sqrt(K / M)  # [num_envs, n_active]
         exp_term = torch.exp(-omega * self.dt)
 
-        q = self.state["q_def"]
-        qd = self.state["qd_def"]
+        q = self.state["x_def"]
+        qd = self.state["dx_def"]
 
         # Steady-state displacement from external torque: q_ss = tau / K
         # Clamp K to avoid division by zero
-        q_ss = external_torques_active / K.clamp(min=1e-6)
+        q_ss = external_forces_active / K.clamp(min=1e-6)
 
         # Critically damped homogeneous solution:
         # q(t) = (C1 + C2*t) * exp(-omega*t)  +  q_ss
@@ -214,14 +213,14 @@ class MassSpringDamperModel:
         C2 = qd + omega * C1
 
         # Evaluate at t = dt
-        self.state["q_def"][:] = (C1 + C2 * self.dt) * exp_term + q_ss
-        self.state["qd_def"][:] = (C2 - omega * (C1 + C2 * self.dt)) * exp_term
+        self.state["x_def"][:] = (C1 + C2 * self.dt) * exp_term + q_ss
+        self.state["dx_def"][:] = (C2 - omega * (C1 + C2 * self.dt)) * exp_term
 
     def reset(self, env_ids: torch.Tensor = None):
         """Reset MSD state to zero for specified environments."""
         if env_ids is None:
-            self.state['q_def'][:] = 0.0
-            self.state['qd_def'][:] = 0.0
+            self.state['x_def'][:] = 0.0
+            self.state['dx_def'][:] = 0.0
         else:
-            self.state['q_def'][env_ids] = 0.0
-            self.state['qd_def'][env_ids] = 0.0
+            self.state['x_def'][env_ids] = 0.0
+            self.state['dx_def'][env_ids] = 0.0

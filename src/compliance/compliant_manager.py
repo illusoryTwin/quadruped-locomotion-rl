@@ -5,7 +5,7 @@ import torch
 
 from compliance.compliance_manager_cfg import ComplianceManagerCfg
 from compliance.utils.mass_spring_damper_model import MassSpringDamperModel
-from compliance.utils.dynamics import calculate_external_torques, create_joint_mask
+from compliance.utils.dynamics import calculate_external_torques, create_joint_mask, get_wrench, get_jacobians
 
 
 class ComplianceManager:
@@ -25,7 +25,7 @@ class ComplianceManager:
         ]
 
         # Active joints - derived from stiffness_config keys (also supports regex)
-        self._active_joint_indices = self._expand_joint_indices(list(cfg.stiffness_config.keys()))
+        self._active_joint_indices = list(range(self._robot.num_joints)) # self._expand_joint_indices(list(cfg.stiffness_config.keys()))
 
         # Build expanded stiffness config with actual joint indices
         self._stiffness_scales = self._build_stiffness_scales(cfg.stiffness_config)
@@ -76,14 +76,22 @@ class ComplianceManager:
 
     def _setup_msd_system(self) -> MassSpringDamperModel:
         cfg = self.cfg
+        n_bodies = len(self._monitored_body_names)
+
+        cartesian_scales = {}
+        for i, body_name in enumerate(self._monitored_body_names):
+            scale = cfg.stiffness_config.get(body_name, 1.0)
+            for axis in range(3):
+                cartesian_scales[i * 3 + axis] = scale
 
         # Create and return MSD system
         return MassSpringDamperModel(
-            n_dofs=self._robot.num_joints,
+            # n_dofs=self._robot.num_joints,
+            n_dofs=n_bodies*3,
             dt=cfg.dt,
             base_inertia=cfg.base_inertia,
             base_stiffness=cfg.base_stiffness,
-            stiffness_scales=self._stiffness_scales,
+            stiffness_scales=cartesian_scales, # self._stiffness_scales,
             num_envs=self._num_envs,
             device=self._device,
         )
@@ -118,26 +126,39 @@ class ComplianceManager:
         if len(self._active_joint_indices) == 0:
             return torch.zeros((self._num_envs, 0), device=self._device)
 
-        # Calculate joint torques from external forces using verified function
-        joint_torques = calculate_external_torques(
-            robot=self._robot,
-            body_names=self._monitored_body_names,
-            joint_mask=self._joint_mask,
-            verbose=False,
-        )
+        # external forces
+        wrench = get_wrench(self._robot, self._monitored_body_names)
+        forces = wrench[:, :, :3]
+        forces_flat = forces.reshape(forces.shape[0], -1)
+
+        # # Calculate joint torques from external forces using verified function
+        # joint_torques = calculate_external_torques(
+        #     robot=self._robot,
+        #     body_names=self._monitored_body_names,
+        #     joint_mask=self._joint_mask,
+        #     verbose=False,
+        # )
 
         # Update MSD system and get deformations
         if base_stiffness is not None:
-            self._msd_system.update_with_variable_stiffness(joint_torques, base_stiffness)
+            # self._msd_system.update_with_variable_stiffness(joint_torques, base_stiffness)
+            self._msd_system.update_with_variable_stiffness(forces_flat, base_stiffness)
         else:
-            self._msd_system.update_msd_state_discrete(joint_torques)
+            # self._msd_system.update_msd_state_discrete(joint_torques)
+            self._msd_system.update_msd_state_discrete(forces_flat)
 
         # Get deformations for active DOFs
-        deformations = self._msd_system.state['q_def']
+        x_def = self._msd_system.state['x_def']
+        # x_def = x_def.reshape(num_envs, n_bodies, 3)
+        x_def_3d = x_def.reshape(self._num_envs, len(self._monitored_body_names), 3)
 
-        self._deformations = deformations
+        J = get_jacobians(self._robot, body_names=self._monitored_body_names, joint_mask=self._joint_mask)[:, :3, :]
+        J_pinv = torch.linalg.pinv(J)
+        q_def = torch.einsum('bnj,ebj->en', J_pinv, x_def_3d)
+
+        self._deformations = q_def 
 
         if self.cfg.debug:
-            print(f"[ComplianceManager] Deformations: {deformations[0]}")
+            print(f"[ComplianceManager] Deformations: {q_def[0]}")
 
-        return deformations
+        return q_def

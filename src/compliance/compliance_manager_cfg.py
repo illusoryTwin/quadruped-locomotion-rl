@@ -12,7 +12,9 @@ class ComplianceManagerCfg:
         enabled: Whether compliance is enabled
         robot_name: Name of the robot articulation in the scene
         monitored_bodies: Bodies where external forces are measured
-        stiffness_config: Joint names -> stiffness scale factors
+        # stiffness_config: Joint names -> stiffness scale factors # for joint-space
+        
+        stiffness_config: body names -> stiffness scale factors
         dt: MSD timestep
         base_stiffness
         base_inertia
@@ -33,18 +35,19 @@ class ComplianceManagerCfg:
 
     # Unitree Go2 joint stiffness scale factors
     stiffness_config: Dict[str, float] = field(default_factory=lambda: {
-        "FL_hip_joint": 1.0,
-        "FL_thigh_joint": 1.0,
-        "FL_calf_joint": 0.8,
-        "FR_hip_joint": 1.0,
-        "FR_thigh_joint": 1.0,
-        "FR_calf_joint": 0.8,
-        "RL_hip_joint": 1.0,
-        "RL_thigh_joint": 1.0,
-        "RL_calf_joint": 0.8,
-        "RR_hip_joint": 1.0,
-        "RR_thigh_joint": 1.0,
-        "RR_calf_joint": 0.8,
+        "base": 1.0,
+        # "FL_hip_joint": 1.0,
+        # "FL_thigh_joint": 1.0,
+        # "FL_calf_joint": 0.8,
+        # "FR_hip_joint": 1.0,
+        # "FR_thigh_joint": 1.0,
+        # "FR_calf_joint": 0.8,
+        # "RL_hip_joint": 1.0,
+        # "RL_thigh_joint": 1.0,
+        # "RL_calf_joint": 0.8,
+        # "RR_hip_joint": 1.0,
+        # "RR_thigh_joint": 1.0,
+        # "RR_calf_joint": 0.8,
     })
 
     dt: float = 0.02 # 0.004
