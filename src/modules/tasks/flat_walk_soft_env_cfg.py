@@ -22,7 +22,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
 from compliance.compliance_manager_cfg import ComplianceManagerCfg
-from modules.events import apply_compliance_force_torque
+from modules.events import apply_sinusoidal_forces
 from modules.commands.stiffness_command import StiffnessCommandCfg
 
 def track_compliant_joint_targets_exp(
@@ -199,37 +199,14 @@ class EventCfg:
         },
     )
 
-    # pull_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="interval",
-    #     interval_range_s=(5.0, 5.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
-    #         "force_range": (-20.0, 20.0),
-    #         "torque_range": (-5.0, 5.0),
-    #     },
-    # )
-
-    # # Apply real physical forces - compliance manager will read these
-    # push_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="interval",
-    #     interval_range_s=(0.1, 0.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_range": (-10.0, 10.0),
-    #         "torque_range": (-3.0, 3.0),
-    #     },
-    # )
-
     pull_robot = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="interval",
-        interval_range_s=(3.0, 5.5),
+        interval_range_s=(5.0, 5.5),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
-            "force_range": (-10.0, 10.0),
-            "torque_range": (-3.0, 3.0),
+            "force_range": (-20.0, 20.0),
+            "torque_range": (-5.0, 5.0),
         },
     )
 
@@ -237,25 +214,47 @@ class EventCfg:
     push_robot = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="interval",
-        interval_range_s=(0.1, 2.5),
+        interval_range_s=(0.1, 0.5),
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
             "force_range": (-10.0, 10.0),
             "torque_range": (-3.0, 3.0),
         },
     )
 
-    # # Apply forces/torques to compliance buffers for MSD deformation
-    # compliance_push = EventTerm(
-    #     func=apply_compliance_force_torque,
+    # pull_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
     #     mode="interval",
-    #     interval_range_s=(0.1, 2.0), # 0.5),
+    #     interval_range_s=(3.0, 5.5),
     #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
     #         "force_range": (-10.0, 10.0),
     #         "torque_range": (-3.0, 3.0),
     #     },
     # )
+
+    # # Apply real physical forces - compliance manager will read these
+    # push_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval",
+    #     interval_range_s=(0.1, 2.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-3.0, 3.0),
+    #     },
+    # )
+
+    # Apply sinusoidal forces to monitored bodies every step
+    compliance_push = EventTerm(
+        func=apply_sinusoidal_forces,
+        mode="step",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
+            "force_amplitude": 10.0,
+            "frequency": 0.5,
+        },
+    )
 
 
 @configclass 
@@ -292,7 +291,7 @@ class RewardsCfg:
     #         "command_name": "base_velocity",
     #         "threshold": 0.5,
     #     },
-    # )
+    # )_compute_compliance_targets
 
 
 @configclass
@@ -337,7 +336,7 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "RR_thigh_joint": 1.0,
                 "RR_calf_joint": 0.8,
             },
-            dt=0.004,
+            dt=0.02, # 0.004,
             base_stiffness=10.0, # 30.0, # 60.0,
             base_inertia=0.5,
         )

@@ -25,10 +25,10 @@ class ComplianceManagerCfg:
     # Unitree Go2 bodies for force monitoring
     monitored_bodies: List[str] = field(default_factory=lambda: [
         "base",
-        "FL_calf",
-        "FR_calf",
-        "RL_calf",
-        "RR_calf",
+        # "FL_calf",
+        # "FR_calf",
+        # "RL_calf",
+        # "RR_calf",
     ])
 
     # Unitree Go2 joint stiffness scale factors
@@ -47,7 +47,7 @@ class ComplianceManagerCfg:
         "RR_calf_joint": 0.8,
     })
 
-    dt: float = 0.004
+    dt: float = 0.02 # 0.004
     base_stiffness: float = 60.0 #TODO: check stiffness value
     base_inertia: float = 0.5 #TODO: check inertia value
     debug: bool = False

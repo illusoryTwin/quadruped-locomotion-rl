@@ -78,6 +78,9 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # -- step interval events
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
+        # -- step-mode events (called every step, e.g. sinusoidal forces)
+        if "step" in self.event_manager.available_modes:
+            self.event_manager.apply(mode="step")
 
         # -- log compliance deformations
         self._log_compliance_metrics()

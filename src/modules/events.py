@@ -1,53 +1,63 @@
 import torch
-import isaaclab.utils.math as math_utils
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.assets import Articulation
 
-def apply_compliance_force_torque(
-    env: ManagerBasedRLEnv,
+
+def apply_sinusoidal_forces(
+    env,
     env_ids: torch.Tensor,
-    force_range: tuple[float, float],
-    torque_range: tuple[float, float],
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg: SceneEntityCfg,
+    force_amplitude: float = 10.0,
+    frequency: float = 0.5,  # Hz
 ):
-    """Apply random forces and torques to the compliance buffers for monitored bodies.
+    """Apply sinusoidal forces on all 3 axes with independent phases per axis.
 
-    This function samples random forces and torques and writes them to the environment's
-    compliance buffers (_compliance_force_b and _compliance_torque_b) which are used
-    by the ComplianceManager to compute joint deformations.
+    Force per axis: F_i = amplitude * sin(2*pi*freq*t + phase_i)
+
+    Writes to the standard Isaac Lab physics buffer via set_external_force_and_torque(),
+    so the ComplianceManager can read them from robot._external_force_b.
+
+    Args:
+        env: The environment instance.
+        env_ids: Environment indices (unused, forces applied to all envs).
+        asset_cfg: Asset and body configuration.
+        force_amplitude: Force amplitude in Newtons.
+        frequency: Oscillation frequency in Hz.
     """
-    # Check if compliance buffers exist
-    if not hasattr(env, '_compliance_force_b') or env._compliance_force_b is None:
-        return
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
 
-    # Get robot and resolve body indices
-    asset = env.scene[asset_cfg.name]
+    # Initialize persistent phase buffers on first call
+    # Shape: [num_envs, num_bodies, 3] — independent phase per env, body, axis
+    if not hasattr(env, "_sin_force_phases"):
+        env._sin_force_phases = torch.rand(
+            (num_envs, num_bodies, 3), device=device
+        ) * 2 * torch.pi
 
-    # Resolve environment ids
-    if env_ids is None:
-        env_ids = torch.arange(env.scene.num_envs, device=asset.device)
+    # Re-randomize phases for environments that just reset
+    reset_ids = (env.episode_length_buf == 0).nonzero(as_tuple=False).flatten()
+    if len(reset_ids) > 0:
+        env._sin_force_phases[reset_ids] = torch.rand(
+            (len(reset_ids), num_bodies, 3), device=device
+        ) * 2 * torch.pi
 
-    # Resolve body indices from config
-    if asset_cfg.body_ids is not None:
-        body_ids = asset_cfg.body_ids if isinstance(asset_cfg.body_ids, list) else [asset_cfg.body_ids]
-    else:
-        body_ids = list(range(asset.num_bodies))
+    # Global simulation time
+    t = env.common_step_counter * env.step_dt
 
-    num_bodies = len(body_ids)
+    # Compute sinusoidal forces: [num_envs, num_bodies, 3]
+    forces = force_amplitude * torch.sin(
+        2 * torch.pi * frequency * t + env._sin_force_phases
+    )
+    torques = torch.zeros_like(forces)
 
-    # Sample random forces (X direction only) and torques (pitch only)
-    size_2d = (len(env_ids), num_bodies)
-    size_3d = (len(env_ids), num_bodies, 3)
-
-    # Forces: only X direction (forward/backward)
-    forces = torch.zeros(size_3d, device=asset.device)
-    forces[:, :, 0] = math_utils.sample_uniform(*force_range, size_2d, asset.device)
-
-    # Torques: only pitch (around Y axis) for consistency with X force
-    torques = torch.zeros(size_3d, device=asset.device)
-    torques[:, :, 1] = math_utils.sample_uniform(*torque_range, size_2d, asset.device)
-
-    # Write to compliance buffers
-    for i, body_id in enumerate(body_ids):
-        env._compliance_force_b[env_ids, body_id, :] = forces[:, i, :]
-        env._compliance_torque_b[env_ids, body_id, :] = torques[:, i, :]
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )

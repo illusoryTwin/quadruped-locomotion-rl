@@ -1,140 +1,3 @@
-# import numpy as np
-
-
-
-# class MSDSystem:
-#     """Mass-Spring-Damper system for modeling compliance."""
-
-#     def __init__(self, n_dofs, active_dof_indices, stiffness_scales, dt, base_inertia, base_stiffness):
-#         """
-#         Initialize MSD system.
-
-#         Args:
-#             n_dofs: Total number of DOFs in the system
-#             active_dof_indices: Array of DOF indices to apply MSD to
-#             ACTIVE_DOFS_MSD: Dict mapping DOF index -> stiffness scale factor
-#             dt: Simulation timestep
-#             base_inertia
-#             base_stiffness
-#         """
-#         self.n_dofs = n_dofs
-#         self.active_idx = active_dof_indices
-#         self.n_active = len(active_dof_indices)
-#         self.dt = dt
-
-#         # Initialize MSD matrices
-#         self.M = np.ones(n_dofs) * base_inertia
-#         self.K = np.zeros(n_dofs)
-#         self.D = np.zeros(n_dofs)
-
-#         # Build DOF mask and apply stiffness scales
-#         self.dof_mask = np.zeros(n_dofs, dtype=bool)
-#         for dof_idx, scale in stiffness_scales.items():
-#             self.K[dof_idx] = base_stiffness * scale
-#             self.dof_mask[dof_idx] = True
-
-#         # Compute critical damping: D = 2*sqrt(M*K)
-#         self.D = 2 * np.sqrt(self.M * self.K)
-
-#         # Compute discrete-time state-space matrices
-#         self.Ad, self.Bd, self.active_idx = self._compute_discrete_matrices()
-
-#         # MSD state: [q, dq] for active DOFs
-#         # self.state = np.zeros(2 * self.n_active)
-#         self.state = self._create_msd_state()
-
-
-#     def _create_msd_state(self):
-#         """Create MSD state dictionary for tracking deformations (only active DOFs)."""
-#         return {
-#             'q_def': np.zeros(len(self.active_idx)),      # Deformation position (rad or m) - active DOFs only
-#             'qd_def': np.zeros(len(self.active_idx)),     # Deformation velocity (rad/s or m/s) - active DOFs only
-#         }
-
-
-#     def get_state_dict(self):
-#         """Get current MSD state as dictionary."""
-#         return self.state
- 
-
-#     def _compute_discrete_matrices(self):
-#         """Compute discrete-time state-space matrices for active DOFs."""
-#         from scipy.linalg import expm
-        
-#         active_idx = np.where(self.dof_mask)[0]
-#         n_active = len(active_idx)
-    
-#         if self.n_active == 0:
-#             return np.eye(0), np.zeros((0, 0)), np.array([], dtype=np.int32)
-
-#         M_active = self.M[self.active_idx]
-#         D_active = self.D[self.active_idx]
-#         K_active = self.K[self.active_idx]
-
-#         # Build continuous-time state matrices (reduced dimension)
-#         # A = [[0, I], [-M^-1*K, -M^-1*D]]
-#         A = np.zeros((2*self.n_active, 2*self.n_active))
-#         B = np.zeros((2*self.n_active, self.n_active))
-
-#         # Upper-right block: I
-#         A[:self.n_active, self.n_active:] = np.eye(self.n_active)
-
-#         # Lower-left block: -M^-1*K
-#         A[self.n_active:, :self.n_active] = np.diag(-K_active / M_active)
-
-#         # Lower-right block: -M^-1*D
-#         A[self.n_active:, self.n_active:] = np.diag(-D_active / M_active)
-
-#         # Input matrix B = [[0], [M^-1]]
-#         B[self.n_active:, :] = np.diag(1.0 / M_active)
-
-#         # Compute discrete-time matrices
-#         # Ad = exp(A * dt)
-#         Ad = expm(A * self.dt)
-
-#         # Bd = A^-1 * (Ad - I) * B
-#         A_inv = np.linalg.inv(A)
-#         Bd = A_inv @ (Ad - np.eye(2*self.n_active)) @ B
-
-#         return Ad, Bd, active_idx
-
-
-#     def update_msd_state_discrete(self, external_torques_full):
-#         """
-#         Update Mass-Spring-Damper state using analytical discrete-time solution.
-#         Works only with active DOFs internally.
-
-#         Uses precomputed discrete-time state-space matrices:
-#             x[k+1] = Ad*x[k] + Bd*u[k]
-#             where x = [q_def; qd_def], u = tau_ext (active DOFs only)
-
-#         Args:
-#             external_torques_full: External torques on joints (nv,) - full DOF vector
-#         """
-#         if self.n_active == 0:
-#             return  # No active DOFs
-
-#         # Extract only active DOF torques
-#         external_torques_active = external_torques_full[self.active_idx]
-
-#         # Pack state vector: x = [q_def; qd_def] (active DOFs only)
-#         x = np.concatenate([self.state['q_def'], self.state['qd_def']])
-
-#         # Discrete-time state update: x[k+1] = Ad*x[k] + Bd*u[k]
-#         x_next = self.Ad @ x + self.Bd @ external_torques_active
-
-#         # Unpack state vector (active DOFs only)
-#         n_active = len(self.active_idx)
-#         self.state['q_def'][:] = x_next[:n_active]
-#         self.state['qd_def'][:] = x_next[n_active:]
-
-
-#     def reset(self):
-#         """Reset MSD state to zero."""
-#         self.state['q_def'][:] = 0.0
-#         self.state['qd_def'][:] = 0.0
-
-
 import numpy as np
 import torch
 
@@ -151,7 +14,7 @@ class MassSpringDamperModel:
         num_envs=1,
         device="cuda"
     ):
-        """                              
+        """
         Initialize MSD system.
 
         Args:
@@ -159,7 +22,7 @@ class MassSpringDamperModel:
             dt: Simulation timestep in seconds
             base_inertia: Base inertia value applied to all DOFs
             base_stiffness: Base stiffness value, scaled per-DOF by stiffness_scales
-            stiffness_scales: Mapping of DOF index to stiffness scale factor.     
+            stiffness_scales: Mapping of DOF index to stiffness scale factor.
                 Only DOFs present in this dict are modeled as compliant.
             num_envs: Number of parallel environments for batched simulation.
             device: Torch device for computation ('cuda' or 'cpu')
@@ -170,6 +33,7 @@ class MassSpringDamperModel:
         self.n_active = len(self.active_idx)
         self.num_envs = num_envs
         self.device = device
+        self.stiffness_scales = stiffness_scales
 
         # Initialize MSD matrices (numpy for matrix computation)
         self.M = np.ones(n_dofs) * base_inertia
@@ -190,13 +54,27 @@ class MassSpringDamperModel:
         # Convert active_idx to torch for indexing
         self.active_idx_torch = torch.tensor(self.active_idx, dtype=torch.long, device=device)
 
-        # Store per-DOF parameters as torch tensors for the analytical path
-        scales_ordered = [stiffness_scales[idx] for idx in self.active_idx]
-        self._scales_t = torch.tensor(scales_ordered, dtype=torch.float32, device=device)
-        self._M_active_t = torch.tensor(self.M[self.active_idx], dtype=torch.float32, device=device)
-
         # MSD state: batched [num_envs, n_active] for q_def and qd_def
         self.state = self._create_msd_state()
+
+    def set_stiffness(self, base_stiffness: float):
+        """Update base stiffness and recompute MSD matrices.
+
+        Args:
+            base_stiffness: New base stiffness value, scaled per-DOF by stiffness_scales.
+        """
+        # Recompute stiffness for active DOFs
+        self.K = np.zeros(self.n_dofs)
+        for dof_idx, scale in self.stiffness_scales.items():
+            self.K[dof_idx] = base_stiffness * scale
+
+        # Recompute critical damping: D = 2*sqrt(M*K)
+        self.D = 2 * np.sqrt(self.M * self.K)
+
+        # Recompute discrete-time matrices
+        Ad_np, Bd_np = self._compute_discrete_matrices()
+        self.Ad = torch.tensor(Ad_np, dtype=torch.float32, device=self.device)
+        self.Bd = torch.tensor(Bd_np, dtype=torch.float32, device=self.device)
 
     def _create_msd_state(self):
         """Create MSD state dictionary for tracking deformations (only active DOFs)."""
@@ -284,52 +162,60 @@ class MassSpringDamperModel:
     def update_with_variable_stiffness(
         self, external_torques: torch.Tensor, base_stiffness: torch.Tensor
     ):
-        """Update MSD state using per-env stiffness via analytical critically-damped solution.
+        """Update MSD state with per-environment variable stiffness.
 
-        For a critically-damped 2nd order system (D = 2*sqrt(M*K)), the exact
-        discrete update per DOF is computed analytically without matrix expm.
-        This allows each environment to have a different base_stiffness value.
+        Uses analytical critically-damped solution for diagonal MSD systems.
+        Each DOF is independent, so we compute per-env stiffness scaling.
 
         Args:
-            external_torques: External torques [num_envs, n_dofs] - full DOF vector
-            base_stiffness: Per-env base stiffness [num_envs] or [num_envs, 1]
+            external_torques: External torques [num_envs, n_dofs]
+            base_stiffness: Per-env base stiffness [num_envs]
         """
         if self.n_active == 0:
             return
 
         external_torques = external_torques.to(device=self.device)
-        tau = external_torques[:, self.active_idx_torch]  # [num_envs, n_active]
+        external_torques_active = external_torques[:, self.active_idx_torch]
 
-        # Reshape base_stiffness to [num_envs, 1] for broadcasting
-        kp = base_stiffness.view(-1, 1).to(device=self.device)
+        # Per-DOF stiffness scales (from config): [n_active]
+        scales = torch.tensor(
+            [self.stiffness_scales[idx] for idx in self.active_idx],
+            dtype=torch.float32, device=self.device,
+        )
 
-        # Per-env, per-DOF stiffness: K[e,j] = kp[e] * scale[j]
-        K = kp * self._scales_t  # [num_envs, n_active]
-        M = self._M_active_t     # [n_active] broadcasts
+        # Per-env, per-DOF stiffness: K[e,d] = base_stiffness[e] * scale[d]
+        # base_stiffness: [num_envs] -> [num_envs, 1]
+        K = base_stiffness.unsqueeze(-1) * scales.unsqueeze(0)  # [num_envs, n_active]
 
-        # Natural frequency and decay
-        omega = torch.sqrt(K / M)           # [num_envs, n_active]
-        alpha = torch.exp(-omega * self.dt)  # [num_envs, n_active]
-        odt = omega * self.dt                # [num_envs, n_active]
+        # Per-DOF inertia (constant)
+        M = self.M[self.active_idx[0]]  # scalar, same for all DOFs
+
+        # Critical damping: D = 2*sqrt(M*K)
+        D = 2.0 * torch.sqrt(M * K)
+
+        # Analytical 2nd-order critically damped discrete update:
+        # For each DOF independently: m*q'' + d*q' + k*q = tau
+        # omega = sqrt(k/m), state update via exact discretization
+        omega = torch.sqrt(K / M)  # [num_envs, n_active]
+        exp_term = torch.exp(-omega * self.dt)
 
         q = self.state["q_def"]
         qd = self.state["qd_def"]
 
-        # Analytical discrete-time coefficients for critically-damped system
-        # Ad = exp(-w*dt) * [[1+w*dt, dt], [-w^2*dt, 1-w*dt]]
-        # Bd = [[(1 - alpha*(1+w*dt)) / (w^2 * M)], [alpha*dt / M]]
-        ad11 = alpha * (1.0 + odt)
-        ad12 = alpha * self.dt
-        ad21 = -alpha * omega * omega * self.dt
-        ad22 = alpha * (1.0 - odt)
+        # Steady-state displacement from external torque: q_ss = tau / K
+        # Clamp K to avoid division by zero
+        q_ss = external_torques_active / K.clamp(min=1e-6)
 
-        # Clamp omega away from zero to avoid division by zero for zero-stiffness DOFs
-        omega_sq_safe = torch.clamp(omega * omega, min=1e-12)
-        bd1 = (1.0 - ad11) / (omega_sq_safe * M)
-        bd2 = alpha * self.dt / M
+        # Critically damped homogeneous solution:
+        # q(t) = (C1 + C2*t) * exp(-omega*t)  +  q_ss
+        # q'(t) = (C2 - omega*(C1 + C2*t)) * exp(-omega*t)
+        # At t=0: C1 = q - q_ss, C2 = qd + omega*C1
+        C1 = q - q_ss
+        C2 = qd + omega * C1
 
-        self.state["q_def"][:] = ad11 * q + ad12 * qd + bd1 * tau
-        self.state["qd_def"][:] = ad21 * q + ad22 * qd + bd2 * tau
+        # Evaluate at t = dt
+        self.state["q_def"][:] = (C1 + C2 * self.dt) * exp_term + q_ss
+        self.state["qd_def"][:] = (C2 - omega * (C1 + C2 * self.dt)) * exp_term
 
     def reset(self, env_ids: torch.Tensor = None):
         """Reset MSD state to zero for specified environments."""
