@@ -1,5 +1,41 @@
 # Quadruped Locomotion RL
 
+Compliance implementation is in the `feat/compliance` branch.
+
+**Task:** compliant walking for Unitree Go2.
+
+> **Note:** Current implementation works in joint space. In future, implementation will be changed for task-space.
+
+## Compliance Architecture
+
+### Overview
+
+The compliance system models deformations as second-order mass-spring-damper (MSD) system.
+External forces applied to the robot's bodies are mapped to joint torques via the Jacobian transpose, and the resulting joint deformations are computed by integrating the MSD dynamics. The policy is rewarded for tracking these deformed states.
+
+`CompliantRLEnv` (in `src/modules/envs/compliant_rl_env.py`) extends `ManagerBasedRLEnv` — it overrides `step()` to call `_compute_compliance_targets()` after physics simulation to calculate new state under compliance.
+
+
+`ComplianceManager` (in `src/compliance/compliance_manager.py`) implements the core compliance logic: it reads external forces from monitored bodies, computes joint-space torques via Jacobian transpose (`tau = J^T @ wrench`), and updates the MSD model to produce deformation vectors. Compliance parameters are defined in `compliance_manager_cfg.py` — monitored bodies, per-joint stiffness scales, timestep (`dt`), base stiffness, and base inertia.
+
+
+The task configuration is in `flat_walk_soft_env_cfg.py` (`UnitreeGo2WalkSoftEnvCfg`)
+
+**Stiffness values are generated as commands** — `StiffnessCommand` (in `src/   modules/commands/stiffness_command.py`) samples a base stiffness `kp` from a range [5.0, 20.0] and resamples every 5–10 seconds. Per-joint stiffness is then `K_joint = kp * scale_joint`.
+
+
+- **in observations** we have stiffness commands
+
+- **Reward** `track_compliant_targets` for tracking deformed states  
+
+
+**Deformations are calculated at each step by solving the dynamic equation** 
+`m*q'' + d*q' + k*q = tau`
+(implementation - in `/src/compliance/utils`)
+
+
+<!-- # Quadruped Locomotion RL
+
 This repository includes reinforcement learning locomotion experiments for the Unitree Go2 robot and the deployment infrastructure required to test them in Mujoco simulator and transfer them to real hardware.
 
 Currently supported tasks include:
@@ -140,4 +176,4 @@ python -m deploy.mujoco.run_policy --config deploy/configs/go2_flat.yaml --vx 1.
 python -m deploy.mujoco.run_policy --config deploy/configs/go2_flat.yaml \
     --checkpoint logs/rsl_rl/unitree_go2_walk/2025-12-29_15-43-52/model_1500.pt
 ```
-
+ -->
