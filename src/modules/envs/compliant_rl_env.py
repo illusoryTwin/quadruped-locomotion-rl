@@ -53,6 +53,10 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         self.reset_terminated = self.termination_manager.terminated
         self.reset_time_outs = self.termination_manager.time_outs
 
+        # -- apply step-mode events (e.g. sinusoidal forces) BEFORE compliance
+        if "step" in self.event_manager.available_modes:
+            self.event_manager.apply(mode="step")
+
         # -- compute compliant targets before rewards so the reward can use them
         self._compute_compliance_targets()
 
@@ -78,9 +82,6 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # -- step interval events
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
-        # -- step-mode events (called every step, e.g. sinusoidal forces)
-        if "step" in self.event_manager.available_modes:
-            self.event_manager.apply(mode="step")
 
         # -- log compliance deformations
         self._log_compliance_metrics()

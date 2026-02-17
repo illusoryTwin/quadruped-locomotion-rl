@@ -25,21 +25,55 @@ from compliance.compliance_manager_cfg import ComplianceManagerCfg
 from modules.events import apply_sinusoidal_forces
 from modules.commands.stiffness_command import StiffnessCommandCfg
 
-def track_compliant_joint_targets_exp(
+def track_compliant_body_positions_exp(
     env: ManagerBasedRLEnv,
-    std: float = 0.1,
+    std: float = 0.05,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Reward for tracking MSD-deformed joint position targets.
+    """Reward for tracking MSD-deformed Cartesian body positions.
 
-    Uses exponential kernel: exp(-||actual_pos - compliant_target||^2 / std^2)
-    Returns zero if compliance is not active.
+    Compares the actual Cartesian displacement of each compliant body
+    (approximated via linear Jacobian) to the MSD-desired deformation x_def.
+
+    reward = exp(-||J @ (q_actual - q_target) - x_def||^2 / std^2)
+
+    All comparisons are in Cartesian space (meters), avoiding the J_pinv
+    linearization error that a joint-space reward would introduce.
     """
-    if not hasattr(env, '_compliant_joint_targets') or env._compliant_joint_targets is None:
+    if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    cm = env.compliance_manager
+    if cm._msd_system is None or cm._deformations is None:
         return torch.zeros(env.num_envs, device=env.device)
 
     asset = env.scene[asset_cfg.name]
-    error = asset.data.joint_pos - env._compliant_joint_targets
+    n_bodies = len(cm._compliant_body_names)
+    body_indices = [asset.body_names.index(n) for n in cm._compliant_body_names]
+
+    # Desired Cartesian deformation from MSD: [num_envs, n_bodies, 3]
+    x_def = cm._msd_system.state['x_def']
+    x_def_3d = x_def.reshape(env.num_envs, n_bodies, 3)
+
+    # Per-env linear Jacobians for compliant bodies: [num_envs, n_bodies, 3, n_dofs]
+    J_lin = asset.root_physx_view.get_jacobians()[:, body_indices, :3, :]
+    if cm._joint_mask is not None:
+        J_lin = J_lin.clone()
+        J_lin[:, :, :, ~cm._joint_mask] = 0
+
+    # Joint position error (actuated joints): [num_envs, num_joints]
+    q_error = asset.data.joint_pos - asset._data.joint_pos_target
+
+    # Pad with zeros for floating base DOFs: [num_envs, n_dofs]
+    q_error_full = torch.zeros(env.num_envs, J_lin.shape[-1], device=env.device)
+    q_error_full[:, 6:] = q_error
+
+    # Actual Cartesian displacement of compliant bodies: [num_envs, n_bodies, 3]
+    delta_p = torch.einsum('ebjd,ed->ebj', J_lin, q_error_full)
+
+    # Error between actual and desired Cartesian deformation
+    error = (delta_p - x_def_3d).reshape(env.num_envs, -1)
+
     return torch.exp(-torch.sum(error * error, dim=1) / (std * std))
 
 
@@ -250,7 +284,7 @@ class EventCfg:
         func=apply_sinusoidal_forces,
         mode="step",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base","FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
             "force_amplitude": 10.0,
             "frequency": 0.5,
         },
@@ -274,9 +308,9 @@ class RewardsCfg:
     # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     track_compliant_targets = RewardTerm(
-        func=track_compliant_joint_targets_exp,
-        weight=0.75, # 1.5, # 0.5,
-        params={"std": 0.5}, # 0.25},
+        func=track_compliant_body_positions_exp,
+        weight=0.75,
+        params={"std": 0.1}, # 05},  # meters (Cartesian space)
     )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)

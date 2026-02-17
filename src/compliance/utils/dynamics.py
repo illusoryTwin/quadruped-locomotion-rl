@@ -66,7 +66,7 @@ def get_jacobians(
         joint_mask: Optional boolean mask [num_dofs] to zero out inactive joints
 
     Returns:
-        Jacobians in world frame [num_bodies, 6, num_dofs]
+        Jacobians in world frame [num_envs, num_bodies, 6, num_dofs]
     """
     body_indices = [robot.body_names.index(name) for name in body_names]
 
@@ -78,7 +78,7 @@ def get_jacobians(
         jacobians_w = jacobians_w.clone()
         jacobians_w[:, :, :, ~joint_mask] = 0
 
-    return jacobians_w[0]
+    return jacobians_w
 
 
 def get_jacobians_b(
