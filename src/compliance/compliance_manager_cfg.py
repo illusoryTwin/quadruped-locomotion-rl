@@ -24,30 +24,12 @@ class ComplianceManagerCfg:
     enabled: bool = True
     robot_name: str = "robot"
 
-    # Unitree Go2 bodies for force monitoring
-    monitored_bodies: List[str] = field(default_factory=lambda: [
-        "base",
-        # "FL_calf",
-        # "FR_calf",
-        # "RL_calf",
-        # "RR_calf",
-    ])
-
-    # Unitree Go2 joint stiffness scale factors
-    stiffness_config: Dict[str, float] = field(default_factory=lambda: {
+    compliant_bodies: Dict[str, float] = field(default_factory=lambda: {
         "base": 1.0,
-        # "FL_hip_joint": 1.0,
-        # "FL_thigh_joint": 1.0,
-        # "FL_calf_joint": 0.8,
-        # "FR_hip_joint": 1.0,
-        # "FR_thigh_joint": 1.0,
-        # "FR_calf_joint": 0.8,
-        # "RL_hip_joint": 1.0,
-        # "RL_thigh_joint": 1.0,
-        # "RL_calf_joint": 0.8,
-        # "RR_hip_joint": 1.0,
-        # "RR_thigh_joint": 1.0,
-        # "RR_calf_joint": 0.8,
+        "FL_calf": 0.8,
+        "FR_calf": 0.8,
+        "RL_calf": 0.8,
+        "RR_calf": 0.8,
     })
 
     dt: float = 0.02 # 0.004

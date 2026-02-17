@@ -321,20 +321,12 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         compliance: ComplianceManagerCfg = ComplianceManagerCfg(
             enabled=True,
-            monitored_bodies=["FL_calf", "FR_calf", "RL_calf", "RR_calf"],
-            stiffness_config={
-                "FL_hip_joint": 1.0,
-                "FL_thigh_joint": 1.0,
-                "FL_calf_joint": 0.8,
-                "FR_hip_joint": 1.0,
-                "FR_thigh_joint": 1.0,
-                "FR_calf_joint": 0.8,
-                "RL_hip_joint": 1.0,
-                "RL_thigh_joint": 1.0,
-                "RL_calf_joint": 0.8,
-                "RR_hip_joint": 1.0,
-                "RR_thigh_joint": 1.0,
-                "RR_calf_joint": 0.8,
+            compliant_bodies={
+                "base": 1.0,
+                "FL_calf": 0.8,
+                "FR_calf": 0.8,
+                "RL_calf": 0.8,
+                "RR_calf": 0.8,
             },
             dt=0.02, # 0.004,
             base_stiffness=10.0, # 30.0, # 60.0,

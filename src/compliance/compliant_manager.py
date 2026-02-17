@@ -18,93 +18,47 @@ class ComplianceManager:
         self._device = env.device
         self._num_envs = env.num_envs
 
-        # Monitored bodies - we apply forces on these bodies
-        self._monitored_body_indices = self._expand_body_indices(cfg.monitored_bodies)
-        self._monitored_body_names = [
-            self._robot.body_names[i] for i in self._monitored_body_indices
-        ]
+        # Compliant bodies
+        self._compliant_body_names = list(cfg.compliant_bodies.keys())
+        self._compliant_body_stiffness = cfg.compliant_bodies 
+        self._compliant_body_stiffness_cartesian = self._build_cartesian_stiffness_scales()
 
-        # Active joints - derived from stiffness_config keys (also supports regex)
-        self._active_joint_indices = list(range(self._robot.num_joints)) # self._expand_joint_indices(list(cfg.stiffness_config.keys()))
-
-        # Build expanded stiffness config with actual joint indices
-        self._stiffness_scales = self._build_stiffness_scales(cfg.stiffness_config)
-
-        # Create joint mask for active joints
         self._joint_mask = create_joint_mask(
             num_joints=self._robot.num_joints,
-            active_joint_indices=self._active_joint_indices,
+            active_joint_indices=list(range(self._robot.num_joints)),
             fix_base=False,
             device=self._device,
-        )
+        ) 
 
         self._msd_system = self._setup_msd_system()
         self._deformations = None
 
-        print(f"[ComplianceManager] Monitored bodies: {self._monitored_body_names}")
-        print(f"[ComplianceManager] Active joints: {[self._robot.joint_names[i] for i in self._active_joint_indices]}")
+        print(f"[ComplianceManager] Monitored bodies: {self._compliant_body_names}")
 
-    def _expand_body_indices(self, body_patterns: list) -> list:
-        """Expand regex patterns to actual body indices."""
-        indices = []
-        for pattern in body_patterns:
-            regex = re.compile(pattern)
-            for i, name in enumerate(self._robot.body_names):
-                if regex.fullmatch(name) and i not in indices:
-                    indices.append(i)
-        return indices
 
-    def _expand_joint_indices(self, joint_patterns: list) -> list:
-        """Expand regex patterns to actual joint indices."""
-        indices = []
-        for pattern in joint_patterns:
-            regex = re.compile(pattern)
-            for i, name in enumerate(self._robot.joint_names):
-                if regex.fullmatch(name) and i not in indices:
-                    indices.append(i)
-        return sorted(indices)
-
-    def _build_stiffness_scales(self, stiffness_config: dict) -> dict:
-        """Build stiffness scales dict mapping joint index -> scale."""
-        scales = {}
-        for pattern, scale in stiffness_config.items():
-            regex = re.compile(pattern)
-            for i, name in enumerate(self._robot.joint_names):
-                if regex.fullmatch(name):
-                    scales[i] = scale
-        return scales
+    def _build_cartesian_stiffness_scales(self):
+        cartesian_scales = {}
+        for i, body_name in enumerate(self._compliant_body_names):
+            scale = self._compliant_body_stiffness.get(body_name, 1.0)
+            for axis in range(3):
+                cartesian_scales[i * 3 + axis] = scale
+ 
+        return cartesian_scales
 
     def _setup_msd_system(self) -> MassSpringDamperModel:
         cfg = self.cfg
-        n_bodies = len(self._monitored_body_names)
-
-        cartesian_scales = {}
-        for i, body_name in enumerate(self._monitored_body_names):
-            scale = cfg.stiffness_config.get(body_name, 1.0)
-            for axis in range(3):
-                cartesian_scales[i * 3 + axis] = scale
+        n_bodies = len(self._compliant_body_names)
 
         # Create and return MSD system
         return MassSpringDamperModel(
-            # n_dofs=self._robot.num_joints,
             n_dofs=n_bodies*3,
             dt=cfg.dt,
             base_inertia=cfg.base_inertia,
             base_stiffness=cfg.base_stiffness,
-            stiffness_scales=cartesian_scales, # self._stiffness_scales,
+            stiffness_scales=self._compliant_body_stiffness_cartesian,
             num_envs=self._num_envs,
             device=self._device,
         )
-
-    @property
-    def active_joint_indices(self):
-        """Return list of active joint indices."""
-        return self._active_joint_indices
-
-    @property
-    def monitored_body_indices(self):
-        """Return list of monitored body indices."""
-        return self._monitored_body_indices
 
     def reset(self, env_ids: torch.Tensor = None):
         """Reset MSD state for specified environments."""
@@ -123,38 +77,29 @@ class ComplianceManager:
         Returns:
             Joint deformations [num_envs, num_active_joints]
         """
-        if len(self._active_joint_indices) == 0:
+        if len(self._compliant_body_names) == 0:
             return torch.zeros((self._num_envs, 0), device=self._device)
 
         # external forces
-        wrench = get_wrench(self._robot, self._monitored_body_names)
+        wrench = get_wrench(self._robot, self._compliant_body_names)
         forces = wrench[:, :, :3]
         forces_flat = forces.reshape(forces.shape[0], -1)
 
-        # # Calculate joint torques from external forces using verified function
-        # joint_torques = calculate_external_torques(
-        #     robot=self._robot,
-        #     body_names=self._monitored_body_names,
-        #     joint_mask=self._joint_mask,
-        #     verbose=False,
-        # )
-
         # Update MSD system and get deformations
         if base_stiffness is not None:
-            # self._msd_system.update_with_variable_stiffness(joint_torques, base_stiffness)
             self._msd_system.update_with_variable_stiffness(forces_flat, base_stiffness)
         else:
-            # self._msd_system.update_msd_state_discrete(joint_torques)
             self._msd_system.update_msd_state_discrete(forces_flat)
 
         # Get deformations for active DOFs
         x_def = self._msd_system.state['x_def']
         # x_def = x_def.reshape(num_envs, n_bodies, 3)
-        x_def_3d = x_def.reshape(self._num_envs, len(self._monitored_body_names), 3)
+        x_def_3d = x_def.reshape(self._num_envs, len(self._compliant_body_names), 3)
 
-        J = get_jacobians(self._robot, body_names=self._monitored_body_names, joint_mask=self._joint_mask)[:, :3, :]
+        J = get_jacobians(self._robot, body_names=self._compliant_body_names, joint_mask=self._joint_mask)[:, :3, :]
         J_pinv = torch.linalg.pinv(J)
         q_def = torch.einsum('bnj,ebj->en', J_pinv, x_def_3d)
+        q_def = q_def[:, 6:] # drop 6 floating-base DOFs
 
         self._deformations = q_def 
 
