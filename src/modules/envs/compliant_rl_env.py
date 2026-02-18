@@ -160,6 +160,11 @@ class CompliantRLEnv(ManagerBasedRLEnv):
                 self.extras["log"][f"tracking/compliant_error_{name}"] = compliant_err
                 self.extras["log"][f"tracking/deformation_signed_{name}"] = deform_val
 
+                # Per-joint state comparison: actual vs rigid vs compliant
+                self.extras["log"][f"state/actual_pos_{name}"] = actual_pos[:, i].mean().item()
+                self.extras["log"][f"state/default_target_{name}"] = default_target[:, i].mean().item()
+                self.extras["log"][f"state/compliant_target_{name}"] = compliant_target[:, i].mean().item()
+
             # Aggregate errors across all joints
             default_err_all = (actual_pos - default_target).pow(2).sum(dim=1)
             compliant_err_all = (actual_pos - compliant_target).pow(2).sum(dim=1)

@@ -61,7 +61,7 @@ def track_compliant_body_positions_exp(
     """Reward for tracking MSD-deformed Cartesian body positions.
 
     Compares the actual Cartesian displacement of each compliant body
-    (approximated via linear Jacobian) to the MSD-desired deformation x_def.
+    (approximated via linear Jacobian) to the x_def - state deformed under forces.
 
     reward = exp(-||J @ (q_actual - q_target) - x_def||^2 / std^2)
 
@@ -79,7 +79,7 @@ def track_compliant_body_positions_exp(
     n_bodies = len(cm._compliant_body_names)
     body_indices = [asset.body_names.index(n) for n in cm._compliant_body_names]
 
-    # Desired Cartesian deformation from MSD: [num_envs, n_bodies, 3]
+    # Desired Cartesian deformation: [num_envs, n_bodies, 3]
     x_def = cm._msd_system.state['x_def']
     x_def_3d = x_def.reshape(env.num_envs, n_bodies, 3)
 

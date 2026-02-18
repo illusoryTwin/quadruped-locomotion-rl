@@ -33,8 +33,8 @@ def apply_sinusoidal_forces(
         else asset.num_bodies
     )
 
-    # Initialize persistent phase buffers on first call
-    # Shape: [num_envs, num_bodies, 3] — independent phase per env, body, axis
+    # Initialize phase buffers on first call
+    # independent phase per env, body, axis
     if not hasattr(env, "_sin_force_phases"):
         env._sin_force_phases = torch.rand(
             (num_envs, num_bodies, 3), device=device
