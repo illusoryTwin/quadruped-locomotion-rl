@@ -156,7 +156,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(5.0, 20.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(1000.0, 2000.0)), # 5.0, 20.0)),
     )
 
 
@@ -363,7 +363,7 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "RR_calf": 0.8,
             },
             dt=0.02, # 0.004,
-            base_stiffness=10.0, # 30.0, # 60.0,
+            base_stiffness=1500.0, # 10.0, # 30.0, # 60.0,
             base_inertia=0.5,
         )
 
