@@ -19,11 +19,39 @@ from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
 from compliance.compliance_manager_cfg import ComplianceManagerCfg
 from modules.events import apply_sinusoidal_forces
 from modules.commands.stiffness_command import StiffnessCommandCfg
+
+import isaaclab.envs.mdp as mdp 
+
+STEPS_PER_ITER = 24
+
+# stiffness schedule: (iteration_threshold, (kp_min, kp_max))
+STIFFNESS_SCHEDULE = [
+    (0,    (3000.0, 4000.0)),
+    (1000, (2000.0, 3000.0)),
+    (2000, (1000.0, 3000.0)),
+    (3000, (500.0, 3000.0)),
+]
+
+
+def stepped_stiffness_schedule(env, env_ids, old_value):
+    """Stiffness curriculum based on training iterations."""
+    current_iter = env.common_step_counter // STEPS_PER_ITER
+    kp_range = STIFFNESS_SCHEDULE[0][1]
+    for iter_threshold, range_val in STIFFNESS_SCHEDULE:
+        if current_iter >= iter_threshold:
+            kp_range = range_val
+        else:
+            break
+    if kp_range == old_value:
+        return mdp.modify_term_cfg.NO_CHANGE
+    return kp_range
+
 
 def track_compliant_body_positions_exp(
     env: ManagerBasedRLEnv,
@@ -156,7 +184,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(1000.0, 2000.0)), # 5.0, 20.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(3000.0, 4000.0)), # 1000.0, 2000.0)), # 5.0, 20.0)),
     )
 
 
@@ -309,8 +337,8 @@ class RewardsCfg:
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     track_compliant_targets = RewardTerm(
         func=track_compliant_body_positions_exp,
-        weight=0.75,
-        params={"std": 0.1}, # 05},  # meters (Cartesian space)
+        weight=1.5, # 0.75,
+        params={"std": 0.2},  # 0.1 # meters (Cartesian space)
     )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
@@ -339,7 +367,13 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    pass 
+    stiffness_curr = CurrTerm(
+        func=mdp.modify_term_cfg,
+        params={
+            "address": "commands.stiffness.ranges.kp",
+            "modify_fn": stepped_stiffness_schedule,
+        },
+    ) 
 
 
 @configclass 

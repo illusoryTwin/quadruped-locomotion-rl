@@ -181,6 +181,14 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         except (KeyError, RuntimeError):
             pass
 
+        # --- Curriculum: current stiffness range ---
+        try:
+            kp_range = self.cfg.commands.stiffness.ranges.kp
+            self.extras["log"]["curriculum/stiffness_kp_min"] = kp_range[0]
+            self.extras["log"]["curriculum/stiffness_kp_max"] = kp_range[1]
+        except (AttributeError, KeyError):
+            pass
+
         # --- External forces on compliant bodies ---
         body_names = self.compliance_manager._compliant_body_names
         body_indices = [robot.body_names.index(n) for n in body_names]
