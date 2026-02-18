@@ -26,7 +26,17 @@ from compliance.compliance_manager_cfg import ComplianceManagerCfg
 from modules.events import apply_sinusoidal_forces
 from modules.commands.stiffness_command import StiffnessCommandCfg
 
-import isaaclab.envs.mdp as mdp 
+import isaaclab.envs.mdp as mdp
+
+
+def joint_deformations(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Observation term: current joint deformations from compliance manager. Shape [num_envs, 12]."""
+    if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
+        deforms = env.compliance_manager._deformations
+        if deforms is not None:
+            return deforms
+    return torch.zeros(env.num_envs, env.scene["robot"].num_joints, device=env.device)
+
 
 STEPS_PER_ITER = 24
 
@@ -227,6 +237,7 @@ class ObservationsCfg:
     @configclass
     class CriticCfg(PolicyCfg):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.15, n_max=0.15), scale=1.0)
+        deformations = ObsTerm(func=joint_deformations)
 
     
     policy = PolicyCfg()
