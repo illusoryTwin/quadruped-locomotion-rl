@@ -43,9 +43,9 @@ STEPS_PER_ITER = 24
 # stiffness schedule: (iteration_threshold, (kp_min, kp_max))
 STIFFNESS_SCHEDULE = [
     (0,    (3000.0, 4000.0)),
-    (1000, (2000.0, 3000.0)),
-    (2000, (1000.0, 3000.0)),
-    (3000, (500.0, 3000.0)),
+    (1000, (1000.0, 3000.0)),
+    (2000, (200.0, 1000.0)),
+    (3000, (50.0, 200.0)),
 ]
 
 
@@ -194,7 +194,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(3000.0, 4000.0)), # 1000.0, 2000.0)), # 5.0, 20.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(3000.0, 4000.0)),
     )
 
 
@@ -349,7 +349,7 @@ class RewardsCfg:
     track_compliant_targets = RewardTerm(
         func=track_compliant_body_positions_exp,
         weight=1.5, # 0.75,
-        params={"std": 0.5}, # 0.2},  # 0.1 # meters (Cartesian space)
+        params={"std": 0.5},
     )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
@@ -408,7 +408,7 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "RR_calf": 0.8,
             },
             dt=0.02, # 0.004,
-            base_stiffness=1500.0, # 10.0, # 30.0, # 60.0,
+            base_stiffness=1500.0,
             base_inertia=0.5,
         )
 
