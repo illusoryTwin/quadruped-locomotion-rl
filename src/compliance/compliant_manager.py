@@ -100,8 +100,9 @@ class ComplianceManager:
         J_pinv = torch.linalg.pinv(J)
         q_def = torch.einsum('ebnj,ebj->en', J_pinv, x_def_3d)
         q_def = q_def[:, 6:] # drop 6 floating-base DOFs
+        q_def = q_def.clamp(-self.cfg.max_deformation, self.cfg.max_deformation)
 
-        self._deformations = q_def 
+        self._deformations = q_def
 
         if self.cfg.debug:
             print(f"[ComplianceManager] Deformations: {q_def[0]}")

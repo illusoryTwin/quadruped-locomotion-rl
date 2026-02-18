@@ -35,4 +35,5 @@ class ComplianceManagerCfg:
     dt: float = 0.02 # 0.004
     base_stiffness: float = 60.0 #TODO: check stiffness value
     base_inertia: float = 0.5 #TODO: check inertia value
+    max_deformation: float = 0.5  # max absolute joint deformation in radians
     debug: bool = False

@@ -338,7 +338,7 @@ class RewardsCfg:
     track_compliant_targets = RewardTerm(
         func=track_compliant_body_positions_exp,
         weight=1.5, # 0.75,
-        params={"std": 0.2},  # 0.1 # meters (Cartesian space)
+        params={"std": 0.5}, # 0.2},  # 0.1 # meters (Cartesian space)
     )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
