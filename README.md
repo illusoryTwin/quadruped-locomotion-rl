@@ -19,27 +19,7 @@ External forces applied to the robot's bodies, and the resulting deformations in
 
 The task configuration is in `flat_walk_soft_env_cfg.py` (`UnitreeGo2WalkSoftEnvCfg`)
 
-**Stiffness values are generated as commands** — `StiffnessCommand` (in `src/   modules/commands/stiffness_command.py`) samples a base stiffness `kp` from a range based on curriculum:                       
-
-| Iteration | kp range |                                                               
-|----------- ----------|                                                                        
-| 0 | 3000 – 4000 |                                                                             
-| 1000 | 1000 – 3000 |                                                                          
-| 2000 | 200 – 1000 |                                                                           
-| 3000 | 50 – 200 |                          
-
-- **in observations** we have stiffness commands (in actor). Critic' observations have deformations.
-
-- **Reward** `track_compliant_targets` for tracking deformed states  
-It calculates the error in Cartesian space
-
-reward = exp(-||delta_p - x_def||² / std²)
-
-where `delta_p = J @ q_error`, `q_error = q_actual - q_target`k  and `x_def` is deformation  
-
-
- between current joint-space state and the deformed joint-space state. deformed joint space state is calculated via J @ x_deformed.
-
+### Deformations
 
 **Deformations are calculated at each step by solving the dynamic equation** 
 `m*q'' + d*q' + k*q = tau`
@@ -47,17 +27,48 @@ where `delta_p = J @ q_error`, `q_error = q_actual - q_target`k  and `x_def` is 
 
 To avoid exploding values, deformations are clamped to `[-max_deformation, max_deformation]` defined in the ComplianceManagerCfg config. 
 
+
+### Commands 
+
+**Stiffness values are generated as commands** — `StiffnessCommand` (in `src/   modules/commands/stiffness_command.py`) samples a base stiffness `kp` from a range based on curriculum:                       
+
+| Iteration | kp range    |
+|-----------|-------------|
+| 0         | 3000 – 4000 |
+| 1000      | 1000 – 3000 |
+| 2000      | 200 – 1000  |
+| 3000      | 50 – 200    |                          
+
+### Observations
+
+**in observations** we have stiffness commands (in actor). Critic's observations have deformations.
+
+### Rewards
+
+- `track_compliant_targets` reward for tracking deformed states  
+
+It calculates the error in Cartesian space:
+
+$$reward = \exp\!\left(-\frac{\|\Delta p - x_{def}\|^2}{\sigma^2}\right)$$
+
+where `delta_p = J @ q_error`, `q_error = q_actual - q_target`k  and `x_def` is deformation between current joint-space state and the deformed joint-space state. deformed joint space state is calculated via J @ x_deformed.
+
+
 ## Launch
 
 Use the following command to launch compliant policy training (supposed you have installed Isaac Sim 5.1):
 
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
 
-`python3 src/scripts/train.py --task=go2_compliant_locomotion --num_envs=4096 --max_iterations=5000 --headless`
+```
+python3 src/scripts/train.py --task=go2_compliant_locomotion --num_envs=4096 --max_iterations=5000 --headless
+```
 
 To visualize in isaac sim:
 
-`python3 src/scripts/play.py --task=go2_compliant_locomotion --num_envs=4`
+```
+python3 src/scripts/play.py --task=go2_compliant_locomotion --num_envs=4
+```
 
 *One can use the following guiude to install the relevant version of IsaacSim: 
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
