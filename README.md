@@ -53,6 +53,12 @@ $$reward = \exp\!\left(-\frac{\|\Delta p - x_{def}\|^2}{\sigma^2}\right)$$
 
 where `delta_p = J @ q_error`, `q_error = q_actual - q_target`k  and `x_def` is deformation between current joint-space state and the deformed joint-space state. deformed joint space state is calculated via J @ x_deformed.
 
+### Events
+
+A special kind of event is created for compliance learning:
+
+`compliance_push` — step-based sinusoidal forces, applied every step (mode="step"). They act as continuous external perturbations that the MSD system responds to, producing the deformation targets the policy must track.
+
 
 ## Launch
 
