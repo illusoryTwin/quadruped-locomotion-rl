@@ -22,7 +22,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.envs import ManagerBasedRLEnv
-from modules.terrains import SIMPLE_STAIRS_TERRAIN_CFG, STAIRS_TERRAIN_CFG
+from src.modules.terrains import SIMPLE_STAIRS_TERRAIN_CFG, STAIRS_TERRAIN_CFG
 
 
 def feet_air_time(

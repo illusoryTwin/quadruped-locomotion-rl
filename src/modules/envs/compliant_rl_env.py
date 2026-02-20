@@ -2,7 +2,7 @@ from collections.abc import Sequence
 import torch
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.common import VecEnvStepReturn
-from compliance import ComplianceManager, ComplianceManagerCfg
+from src.compliance import ComplianceManager, ComplianceManagerCfg
 
 
 class CompliantRLEnv(ManagerBasedRLEnv):

@@ -22,9 +22,9 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
-from compliance.compliance_manager_cfg import ComplianceManagerCfg
-from modules.events import apply_sinusoidal_forces
-from modules.commands.stiffness_command import StiffnessCommandCfg
+from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
+from src.modules.events import apply_sinusoidal_forces
+from src.modules.commands.stiffness_command import StiffnessCommandCfg
 
 import isaaclab.envs.mdp as mdp
 

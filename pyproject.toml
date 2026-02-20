@@ -11,4 +11,4 @@ dependencies = []
 train = "src.scripts.train:run"
 
 [tool.setuptools.packages.find]
-include = ["src*", "tasks*", "modules*"]
+include = ["src*"]

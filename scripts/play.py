@@ -81,7 +81,7 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
-import modules.tasks  # noqa: F401  # Register custom environments
+import src.modules.tasks  # noqa: F401  # Register custom environments
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)

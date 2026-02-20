@@ -3,9 +3,9 @@
 import re
 import torch
 
-from compliance.compliance_manager_cfg import ComplianceManagerCfg
-from compliance.utils.mass_spring_damper_model import MassSpringDamperModel
-from compliance.utils.dynamics import calculate_external_torques, create_joint_mask, get_wrench, get_jacobians
+from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
+from src.compliance.utils.mass_spring_damper_model import MassSpringDamperModel
+from src.compliance.utils.dynamics import calculate_external_torques, create_joint_mask, get_wrench, get_jacobians
 
 
 class ComplianceManager:
