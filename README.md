@@ -67,13 +67,13 @@ Use the following command to launch compliant policy training (supposed you have
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
 
 ```
-python3 src/scripts/train.py --task=go2_compliant_locomotion --num_envs=4096 --max_iterations=5000 --headless
+python3 scripts/train.py --task=go2_compliant_locomotion --num_envs=4096 --max_iterations=5000 --headless
 ```
 
 To visualize in isaac sim:
 
 ```
-python3 src/scripts/play.py --task=go2_compliant_locomotion --num_envs=4
+python3 scripts/play.py --task=go2_compliant_locomotion --num_envs=4
 ```
 
 *One can use the following guiude to install the relevant version of IsaacSim: 
@@ -106,22 +106,36 @@ This repo uses Isaac Sim 5.1 and Isaac Lab 2.3.0.
 
 ```
 quadruped-locomotion-rl/
-├── scripts/                # Training & evaluation scripts
-│   ├── train.py            # Main training script
-│   └── play.py             # Policy visualization in Isaac Sim
-├── tasks/                  # Environment configurations
-│   ├── flat_walk_env_cfg.py
-│   ├── rough_walk_env_cfg.py
-│   └── stairs_climbing_env_cfg.py
-├── modules/                # Custom components
-│   ├── terrains.py
-│   ├── rewards.py
-│   └── curriculums.py
-├── deploy/                 # Deployment code
-│   ├── configs/            # Robot/task configs
-│   ├── common/             # Shared utilities
-│   └── mujoco/             # MuJoCo deployment
-└── logs/                   # Training outputs
+├── scripts/                    # Training & evaluation scripts
+│   ├── train.py                # Main training script
+│   ├── play.py                 # Policy visualization in Isaac Sim
+│   └── cli_args.py             # CLI argument helpers
+├── src/                        # Main source package
+│   ├── algorithms/             # RL algorithm configs
+│   │   └── rsl_rl_ppo_cfg.py
+│   ├── compliance/             # Compliance system
+│   │   ├── compliant_manager.py
+│   │   ├── compliance_manager_cfg.py
+│   │   └── utils/              # MSD dynamics, frame transforms
+│   └── modules/
+│       ├── tasks/              # Environment configurations
+│       │   ├── flat_walk_env_cfg.py
+│       │   ├── flat_walk_soft_env_cfg.py
+│       │   ├── rough_walk_env_cfg.py
+│       │   └── stairs_climbing_env_cfg.py
+│       ├── envs/               # Custom environments
+│       │   └── compliant_rl_env.py
+│       ├── commands/           # Command generators
+│       │   └── stiffness_command.py
+│       ├── terrains.py
+│       ├── rewards.py
+│       ├── events.py
+│       └── curriculums.py
+├── deploy/                     # Deployment code
+│   ├── configs/                # Robot/task configs
+│   ├── common/                 # Shared utilities
+│   └── mujoco/                 # MuJoCo deployment
+└── logs/                       # Training outputs
 ```
 
 ## Installation
@@ -175,13 +189,13 @@ Launch training with Isaac Lab:
 conda activate isaacsim
 
 # Train flat terrain walking
-python3 src/scripts/train.py --task=go2_walk_flat --num_envs=4096 --max_iterations=5000
+python3 scripts/train.py --task=go2_walk_flat --num_envs=4096 --max_iterations=5000
 ```
 
 Visualize trained policy in Isaac Sim:
 
 ```bash
-python3 src/scripts/play.py --task=go2_walk_flat --num_envs=16
+python3 scripts/play.py --task=go2_walk_flat --num_envs=16
 ```
 
 
