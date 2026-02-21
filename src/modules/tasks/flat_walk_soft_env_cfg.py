@@ -19,7 +19,6 @@ from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
-from isaaclab.managers import CurriculumTermCfg as CurrTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
@@ -38,82 +37,25 @@ def joint_deformations(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.zeros(env.num_envs, env.scene["robot"].num_joints, device=env.device)
 
 
-STEPS_PER_ITER = 24
-
-# stiffness schedule: (iteration_threshold, (kp_min, kp_max))
-STIFFNESS_SCHEDULE = [
-    # (0,    (3000.0, 4000.0)),
-    # (1000, (2000.0, 3000.0)),
-    (0, (300.0, 400.0)),
-    (1000, (200.0, 300.0)),
-    (2000, (100.0, 200.0)),
-    (3000, (50.0, 200.0)),
-]
 
 
-def stepped_stiffness_schedule(env, env_ids, old_value):
-    """Stiffness curriculum based on training iterations."""
-    current_iter = env.common_step_counter // STEPS_PER_ITER
-    kp_range = STIFFNESS_SCHEDULE[0][1]
-    for iter_threshold, range_val in STIFFNESS_SCHEDULE:
-        if current_iter >= iter_threshold:
-            kp_range = range_val
-        else:
-            break
-    if kp_range == old_value:
-        return mdp.modify_term_cfg.NO_CHANGE
-    return kp_range
-
-
-def track_compliant_body_positions_exp(
+def track_compliant_joint_targets_exp(
     env: ManagerBasedRLEnv,
-    std: float = 0.05,
+    std: float = 0.25,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Reward for tracking MSD-deformed Cartesian body positions.
+    """Reward for tracking compliance-adjusted joint position targets.
 
-    Compares the actual Cartesian displacement of each compliant body
-    (approximated via linear Jacobian) to the x_def - state deformed under forces.
+    Compares the robot's actual joint positions against the compliant targets
+    (PD target + MSD deformation) in joint space.
 
-    reward = exp(-||J @ (q_actual - q_target) - x_def||^2 / std^2)
-
-    All comparisons are in Cartesian space (meters), avoiding the J_pinv
-    linearization error that a joint-space reward would introduce.
+    reward = exp(-||q_actual - q_compliant_target||^2 / std^2)
     """
-    if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    cm = env.compliance_manager
-    if cm._msd_system is None or cm._deformations is None:
+    if not hasattr(env, '_compliant_joint_targets') or env._compliant_joint_targets is None:
         return torch.zeros(env.num_envs, device=env.device)
 
     asset = env.scene[asset_cfg.name]
-    n_bodies = len(cm._compliant_body_names)
-    body_indices = [asset.body_names.index(n) for n in cm._compliant_body_names]
-
-    # Desired Cartesian deformation: [num_envs, n_bodies, 3]
-    x_def = cm._msd_system.state['x_def']
-    x_def_3d = x_def.reshape(env.num_envs, n_bodies, 3)
-
-    # Per-env linear Jacobians for compliant bodies: [num_envs, n_bodies, 3, n_dofs]
-    J_lin = asset.root_physx_view.get_jacobians()[:, body_indices, :3, :]
-    if cm._joint_mask is not None:
-        J_lin = J_lin.clone()
-        J_lin[:, :, :, ~cm._joint_mask] = 0
-
-    # Joint position error (actuated joints): [num_envs, num_joints]
-    q_error = asset.data.joint_pos - asset._data.joint_pos_target
-
-    # Pad with zeros for floating base DOFs: [num_envs, n_dofs]
-    q_error_full = torch.zeros(env.num_envs, J_lin.shape[-1], device=env.device)
-    q_error_full[:, 6:] = q_error
-
-    # Actual Cartesian displacement of compliant bodies: [num_envs, n_bodies, 3]
-    delta_p = torch.einsum('ebjd,ed->ebj', J_lin, q_error_full)
-
-    # Error between actual and desired Cartesian deformation
-    error = (delta_p - x_def_3d).reshape(env.num_envs, -1)
-
+    error = asset.data.joint_pos - env._compliant_joint_targets
     return torch.exp(-torch.sum(error * error, dim=1) / (std * std))
 
 
@@ -196,7 +138,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(3000.0, 4000.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(100.0, 150.0)),
     )
 
 
@@ -355,7 +297,7 @@ class EventCfg:
                 "RL_calf",
                 "RR_calf"
             ]),
-            "force_amplitude": [30.0, 10.0, 10.0, 10.0, 10.0],
+            "force_amplitude": [30.0, 5.0, 5.0, 5.0, 5.0],
             "frequency": 0.5,
             "randomize_bodies": True,
         },
@@ -379,9 +321,9 @@ class RewardsCfg:
     # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     track_compliant_targets = RewardTerm(
-        func=track_compliant_body_positions_exp,
-        weight=1.5, # 0.75,
-        params={"std": 0.5},
+        func=track_compliant_joint_targets_exp,
+        weight=1.5,
+        params={"std": 0.25},
     )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
@@ -411,13 +353,7 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    stiffness_curr = CurrTerm(
-        func=mdp.modify_term_cfg,
-        params={
-            "address": "commands.stiffness.ranges.kp",
-            "modify_fn": stepped_stiffness_schedule,
-        },
-    ) 
+    pass
 
 
 @configclass 

@@ -13,8 +13,10 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         # Initialize compliance manager if configured and enabled
         self.compliance_manager = None
+        self._injection_alpha = 1.0
         if hasattr(cfg, 'compliance') and cfg.compliance.enabled:
             self.compliance_manager = ComplianceManager(cfg.compliance, self)
+            self._injection_alpha = cfg.compliance.injection_alpha_start
 
         # deformed joint position targets for use in reward computation
         self._compliant_joint_targets = None
@@ -33,6 +35,8 @@ class CompliantRLEnv(ManagerBasedRLEnv):
             self._sim_step_counter += 1
             # set actions into buffers
             self.action_manager.apply_action()
+            # inject compliance deformation into PD targets before sending to sim
+            self._inject_compliance_deformation()
             # set actions into simulator
             self.scene.write_data_to_sim()
             # simulate
@@ -48,6 +52,10 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # -- update env counters (used for curriculum generation)
         self.episode_length_buf += 1
         self.common_step_counter += 1
+
+        # -- anneal compliance injection alpha
+        self._update_injection_alpha()
+
         # -- check terminations
         self.reset_buf = self.termination_manager.compute()
         self.reset_terminated = self.termination_manager.terminated
@@ -92,11 +100,12 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
     def _compute_compliance_targets(self):
-        """Compute compliant joint position targets from deformations.
+        """Compute compliant joint targets and inject deformation into PD targets.
 
-        Stores deformed targets on self._compliant_joint_targets for use
-        by the reward function. Does NOT modify PD targets — the policy
-        must learn to reach these positions through reward shaping.
+        Teacher-student annealing:
+        - Injects alpha * deformation into the actual PD targets (teacher signal)
+        - Stores the full compliant target (100% deformation) for the reward
+        - As alpha anneals from 1→0, the policy must learn to produce compliance
         """
         if self.compliance_manager is None:
             return
@@ -115,10 +124,11 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         robot = self.scene["robot"]
 
-        targets = robot._data.joint_pos_target.clone()
-        targets += deformations 
-   
-        self._compliant_joint_targets = targets
+        # Store original (policy) target before injection, for logging
+        self._original_joint_targets = robot._data.joint_pos_target.clone()
+
+        # Store full compliant target (100% deformation) for reward
+        self._compliant_joint_targets = self._original_joint_targets + deformations
 
     def _log_compliance_metrics(self):
         """Log compliance-related metrics to extras for tensorboard."""
@@ -145,7 +155,12 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         # --- Tracking comparison: default (PD target) vs compliant vs actual ---
         actual_pos = robot.data.joint_pos  # [num_envs, num_joints]
-        default_target = robot._data.joint_pos_target  # [num_envs, num_joints]
+        # Use original (pre-injection) target for logging
+        default_target = (
+            self._original_joint_targets
+            if hasattr(self, '_original_joint_targets') and self._original_joint_targets is not None
+            else robot._data.joint_pos_target
+        )
 
         if self._compliant_joint_targets is not None:
             compliant_target = self._compliant_joint_targets
@@ -194,11 +209,43 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         except (AttributeError, KeyError):
             pass
 
+        # --- Injection alpha ---
+        self.extras["log"]["compliance/injection_alpha"] = self._injection_alpha
+
         # --- External forces on compliant bodies ---
         body_names = self.compliance_manager._compliant_body_names
         body_indices = [robot.body_names.index(n) for n in body_names]
         forces = robot._external_force_b[:, body_indices, :]
         self.extras["log"]["compliance/ext_force_norm"] = forces.norm(dim=-1).mean().item()
+
+    def _inject_compliance_deformation(self):
+        """Inject deformation into PD targets inside the physics loop.
+
+        Uses previously-computed deformations (from the last call to
+        _compute_compliance_targets). Called after apply_action() overwrites
+        joint_pos_target, and before write_data_to_sim() sends it to PhysX.
+        """
+        if (
+            self._injection_alpha <= 0
+            or self.compliance_manager is None
+            or self.compliance_manager._deformations is None
+        ):
+            return
+        robot = self.scene["robot"]
+        robot._data.joint_pos_target += self._injection_alpha * self.compliance_manager._deformations
+
+    def _update_injection_alpha(self):
+        """Linearly anneal injection alpha based on training progress."""
+        if self.compliance_manager is None:
+            return
+        cfg = self.cfg.compliance
+        total_steps = cfg.injection_anneal_iters * self.num_envs
+        if total_steps <= 0:
+            return
+        progress = min(self.common_step_counter / total_steps, 1.0)
+        self._injection_alpha = cfg.injection_alpha_start + progress * (
+            cfg.injection_alpha_end - cfg.injection_alpha_start
+        )
 
     def _reset_idx(self, env_ids: Sequence[int]):
         """Reset environments based on specified indices."""

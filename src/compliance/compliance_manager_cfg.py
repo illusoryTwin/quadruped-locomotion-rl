@@ -37,3 +37,9 @@ class ComplianceManagerCfg:
     base_inertia: float = 0.5 #TODO: check inertia value
     max_deformation: float = 0.5  # max absolute joint deformation in radians
     debug: bool = False
+
+    # Teacher-student annealing: inject deformation into PD targets,
+    # linearly reducing injection so the policy learns to produce compliance.
+    injection_alpha_start: float = 1.0   # initial injection fraction (1.0 = full)
+    injection_alpha_end: float = 0.0     # final injection fraction (0.0 = none)
+    injection_anneal_iters: int = 3000   # linear anneal over this many training iters
