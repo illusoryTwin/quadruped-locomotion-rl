@@ -138,7 +138,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(100.0, 150.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 100.0)),
     )
 
 
@@ -377,8 +377,8 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "RR_calf": 0.8,
             },
             dt=0.02, # 0.004,
-            base_stiffness=1500.0,
-            base_inertia=0.5,
+            base_stiffness=100.0,
+            base_inertia=1.0, # 0.5,
         )
 
         def __post_init__(self):

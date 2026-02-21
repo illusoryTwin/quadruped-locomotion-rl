@@ -97,9 +97,9 @@ class ComplianceManager:
         x_def_3d = x_def.reshape(self._num_envs, len(self._compliant_body_names), 3)
 
         J = get_jacobians(self._robot, body_names=self._compliant_body_names, joint_mask=self._joint_mask)[:, :, :3, :]
-        J_pinv = torch.linalg.pinv(J)
+        J_joints = J[:, :, :, 6:]  # only actuated joints, exclude floating base
+        J_pinv = torch.linalg.pinv(J_joints)
         q_def = torch.einsum('ebnj,ebj->en', J_pinv, x_def_3d)
-        q_def = q_def[:, 6:] # drop 6 floating-base DOFs
         q_def = q_def.clamp(-self.cfg.max_deformation, self.cfg.max_deformation)
 
         self._deformations = q_def
