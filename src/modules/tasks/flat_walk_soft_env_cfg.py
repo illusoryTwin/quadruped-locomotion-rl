@@ -42,9 +42,11 @@ STEPS_PER_ITER = 24
 
 # stiffness schedule: (iteration_threshold, (kp_min, kp_max))
 STIFFNESS_SCHEDULE = [
-    (0,    (3000.0, 4000.0)),
-    (1000, (1000.0, 3000.0)),
-    (2000, (200.0, 1000.0)),
+    # (0,    (3000.0, 4000.0)),
+    # (1000, (2000.0, 3000.0)),
+    (0, (300.0, 400.0)),
+    (1000, (200.0, 300.0)),
+    (2000, (100.0, 200.0)),
     (3000, (50.0, 200.0)),
 ]
 
@@ -272,6 +274,29 @@ class EventCfg:
         },
     )
 
+    # pull_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="step",
+    #     # interval_range_s=(5.0, 7.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
+    #         "force_range": (-50.0, 50.0),
+    #         "torque_range": (-5.0, 5.0),
+    #     },
+    # )
+
+    # # Apply real physical forces - compliance manager will read these
+    # push_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="step",
+    #     # interval_range_s=(0.1, 5.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_range": (-50.0, 50.0),
+    #         "torque_range": (-3.0, 3.0),
+    #     },
+    # )
+
     pull_robot = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="interval",
@@ -295,37 +320,44 @@ class EventCfg:
         },
     )
 
-    # pull_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="interval",
-    #     interval_range_s=(3.0, 5.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
-    #         "force_range": (-10.0, 10.0),
-    #         "torque_range": (-3.0, 3.0),
-    #     },
-    # )
+    # # pull_robot = EventTerm(
+    # #     func=mdp.apply_external_force_torque,
+    # #     mode="interval",
+    # #     interval_range_s=(3.0, 5.5),
+    # #     params={
+    # #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
+    # #         "force_range": (-10.0, 10.0),
+    # #         "torque_range": (-3.0, 3.0),
+    # #     },
+    # # )
 
-    # # Apply real physical forces - compliance manager will read these
-    # push_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="interval",
-    #     interval_range_s=(0.1, 2.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
-    #         "force_range": (-10.0, 10.0),
-    #         "torque_range": (-3.0, 3.0),
-    #     },
-    # )
+    # # # Apply real physical forces - compliance manager will read these
+    # # push_robot = EventTerm(
+    # #     func=mdp.apply_external_force_torque,
+    # #     mode="interval",
+    # #     interval_range_s=(0.1, 2.5),
+    # #     params={
+    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
+    # #         "force_range": (-10.0, 10.0),
+    # #         "torque_range": (-3.0, 3.0),
+    # #     },
+    # # )
 
     # Apply sinusoidal forces to monitored bodies every step
     compliance_push = EventTerm(
         func=apply_sinusoidal_forces,
         mode="step",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base","FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
-            "force_amplitude": 30.0, # 10.0,
+            "asset_cfg": SceneEntityCfg("robot", body_names=[
+                "base",
+                "FL_calf",
+                "FR_calf",
+                "RL_calf",
+                "RR_calf"
+            ]),
+            "force_amplitude": [30.0, 10.0, 10.0, 10.0, 10.0],
             "frequency": 0.5,
+            "randomize_bodies": True,
         },
     )
 

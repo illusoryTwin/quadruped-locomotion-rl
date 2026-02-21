@@ -7,10 +7,11 @@ def apply_sinusoidal_forces(
     env,
     env_ids: torch.Tensor,
     asset_cfg: SceneEntityCfg,
-    force_amplitude: float = 10.0,
+    force_amplitude: float | list[float] = 10.0,
     frequency: float = 0.5,  # Hz
     on_duration: float = 2.0,  # seconds forces are applied
     off_duration: float = 1.0,  # seconds forces are zero (pause)
+    randomize_bodies: bool = False,
 ):
     """Apply sinusoidal forces on all 3 axes with independent phases per axis,
     with intermittent on/off duty cycle per environment.
@@ -26,10 +27,14 @@ def apply_sinusoidal_forces(
         env: The environment instance.
         env_ids: Environment indices (unused, forces applied to all envs).
         asset_cfg: Asset and body configuration.
-        force_amplitude: Force amplitude in Newtons.
+        force_amplitude: Force amplitude in Newtons. Either a single float
+            (same for all bodies) or a list of floats (one per body in
+            asset_cfg.body_names).
         frequency: Oscillation frequency in Hz.
         on_duration: How long (seconds) forces are applied per cycle.
         off_duration: How long (seconds) forces are paused per cycle.
+        randomize_bodies: If True, each step randomly selects between 1 and
+            num_bodies-1 bodies to apply forces to (never all at once).
     """
     asset: Articulation = env.scene[asset_cfg.name]
     device = asset.device
@@ -70,12 +75,29 @@ def apply_sinusoidal_forces(
     # 1.0 during on-window, 0.0 during off-window: [num_envs, 1, 1]
     on_mask = (cycle_time < on_duration).float().unsqueeze(-1).unsqueeze(-1)
 
+    # Build per-body amplitude tensor: [1, num_bodies, 1]
+    if isinstance(force_amplitude, (list, tuple)):
+        amp = torch.tensor(force_amplitude, device=device).view(1, num_bodies, 1)
+    else:
+        amp = force_amplitude
+
+    # Random body selection mask: [num_envs, num_bodies, 1]
+    if randomize_bodies and num_bodies > 1:
+        # Random count per env: k in [1, num_bodies - 1]
+        k = torch.randint(1, num_bodies, (num_envs,), device=device)
+        # Assign random scores, rank them to pick top-k per env
+        scores = torch.rand(num_envs, num_bodies, device=device)
+        ranks = scores.argsort(dim=1, descending=True).argsort(dim=1)
+        body_mask = (ranks < k.unsqueeze(1)).float().unsqueeze(-1)
+    else:
+        body_mask = 1.0
+
     # Compute sinusoidal forces: [num_envs, num_bodies, 3]
-    forces = force_amplitude * torch.sin(
+    forces = amp * torch.sin(
         2 * torch.pi * frequency * t + env._sin_force_phases
     )
-    # Apply duty cycle mask
-    forces = forces * on_mask
+    # Apply duty cycle and body activation masks
+    forces = forces * on_mask * body_mask
     torques = torch.zeros_like(forces)
 
     asset.set_external_force_and_torque(
