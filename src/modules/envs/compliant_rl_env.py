@@ -219,11 +219,8 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         self.extras["log"]["compliance/ext_force_norm"] = forces.norm(dim=-1).mean().item()
 
     def _inject_compliance_deformation(self):
-        """Inject deformation into PD targets inside the physics loop.
-
-        Uses previously-computed deformations (from the last call to
-        _compute_compliance_targets). Called after apply_action() overwrites
-        joint_pos_target, and before write_data_to_sim() sends it to PhysX.
+        """
+        Add deformation into PD targets inside the physics loop.
         """
         if (
             self._injection_alpha <= 0
@@ -235,7 +232,7 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         robot._data.joint_pos_target += self._injection_alpha * self.compliance_manager._deformations
 
     def _update_injection_alpha(self):
-        """Linearly anneal injection alpha based on training progress."""
+        """Linearly decrease the deformation added to the position target on training progress."""
         if self.compliance_manager is None:
             return
         cfg = self.cfg.compliance

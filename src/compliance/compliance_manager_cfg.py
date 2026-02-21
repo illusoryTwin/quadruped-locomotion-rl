@@ -32,14 +32,14 @@ class ComplianceManagerCfg:
         "RR_calf": 0.8,
     })
 
-    dt: float = 0.02 # 0.004
-    base_stiffness: float = 60.0 #TODO: check stiffness value
-    base_inertia: float = 0.5 #TODO: check inertia value
+    dt: float = 0.02 
+    base_stiffness: float = 60.0
+    base_inertia: float = 0.5 
     max_deformation: float = 0.5  # max absolute joint deformation in radians
     debug: bool = False
 
-    # Teacher-student annealing: inject deformation into PD targets,
-    # linearly reducing injection so the policy learns to produce compliance.
-    injection_alpha_start: float = 1.0   # initial injection fraction (1.0 = full)
-    injection_alpha_end: float = 0.0     # final injection fraction (0.0 = none)
-    injection_anneal_iters: int = 3000   # linear anneal over this many training iters
+    # Teacher-student-like approach: inject deformation into PD targets,
+    # linearly reducing injection so that to make the policy learn compliance.
+    injection_alpha_start: float = 1.0   # initial injection fraction (means that whole deformations (deformations*1) values will be added to pd joint targets)
+    injection_alpha_end: float = 0.0     # final injection fraction (means that no deformations (deformations*0) values will be added to pd joint targets)
+    injection_anneal_iters: int = 3000   # reduce deformation fraction at this iteration
