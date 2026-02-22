@@ -3,7 +3,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.assets import Articulation
 
 
-def apply_sinusoidal_forces(
+def apply_sinusoidal_forces_xy(
     env,
     env_ids: torch.Tensor,
     asset_cfg: SceneEntityCfg,
@@ -96,8 +96,153 @@ def apply_sinusoidal_forces(
     forces = amp * torch.sin(
         2 * torch.pi * frequency * t + env._sin_force_phases
     )
+    # Zero out Z-axis forces (only apply in XY plane)
+    forces[:, :, 2] = 0.0
     # Apply duty cycle and body activation masks
     forces = forces * on_mask * body_mask
+    torques = torch.zeros_like(forces)
+
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )
+
+
+def apply_sinusoidal_forces(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    force_amplitude: float | list[float] = 10.0,
+    frequency: float = 0.5,
+    on_duration: float = 2.0,
+    off_duration: float = 1.0,
+    z_scale: float = 0.5,
+    randomize_bodies: bool = False,
+):
+    """Apply sinusoidal forces on all 3 axes. Z amplitude is scaled by z_scale.
+
+    Args:
+        force_amplitude: XY amplitude in Newtons (per body).
+        z_scale: Multiplier for Z-axis amplitude relative to XY (default 0.5).
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
+
+    cycle_period = on_duration + off_duration
+
+    if not hasattr(env, "_sin_force_xyz_phases"):
+        env._sin_force_xyz_phases = torch.rand(
+            (num_envs, num_bodies, 3), device=device
+        ) * 2 * torch.pi
+    if not hasattr(env, "_duty_cycle_xyz_offset"):
+        env._duty_cycle_xyz_offset = torch.rand(num_envs, device=device) * cycle_period
+
+    reset_ids = (env.episode_length_buf == 0).nonzero(as_tuple=False).flatten()
+    if len(reset_ids) > 0:
+        env._sin_force_xyz_phases[reset_ids] = torch.rand(
+            (len(reset_ids), num_bodies, 3), device=device
+        ) * 2 * torch.pi
+        env._duty_cycle_xyz_offset[reset_ids] = torch.rand(
+            len(reset_ids), device=device
+        ) * cycle_period
+
+    t = env.common_step_counter * env.step_dt
+
+    cycle_time = (t + env._duty_cycle_xyz_offset) % cycle_period
+    on_mask = (cycle_time < on_duration).float().unsqueeze(-1).unsqueeze(-1)
+
+    if isinstance(force_amplitude, (list, tuple)):
+        amp = torch.tensor(force_amplitude, device=device).view(1, num_bodies, 1)
+    else:
+        amp = force_amplitude
+
+    if randomize_bodies and num_bodies > 1:
+        k = torch.randint(1, num_bodies, (num_envs,), device=device)
+        scores = torch.rand(num_envs, num_bodies, device=device)
+        ranks = scores.argsort(dim=1, descending=True).argsort(dim=1)
+        body_mask = (ranks < k.unsqueeze(1)).float().unsqueeze(-1)
+    else:
+        body_mask = 1.0
+
+    forces = amp * torch.sin(
+        2 * torch.pi * frequency * t + env._sin_force_xyz_phases
+    )
+    # Scale Z amplitude
+    forces[:, :, 2] = forces[:, :, 2] * z_scale
+    forces = forces * on_mask * body_mask
+    torques = torch.zeros_like(forces)
+
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )
+
+
+def apply_sinusoidal_forces_z(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    force_amplitude: float | list[float] = 10.0,
+    frequency: float = 0.5,
+    on_duration: float = 2.0,
+    off_duration: float = 1.0,
+):
+    """Apply sinusoidal forces on Z axis only, with duty cycle."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
+
+    cycle_period = on_duration + off_duration
+
+    # Initialize phase buffer (single phase per env per body, Z only)
+    if not hasattr(env, "_sin_force_z_phases"):
+        env._sin_force_z_phases = torch.rand(
+            (num_envs, num_bodies), device=device
+        ) * 2 * torch.pi
+    if not hasattr(env, "_duty_cycle_z_offset"):
+        env._duty_cycle_z_offset = torch.rand(num_envs, device=device) * cycle_period
+
+    # Re-randomize for reset envs
+    reset_ids = (env.episode_length_buf == 0).nonzero(as_tuple=False).flatten()
+    if len(reset_ids) > 0:
+        env._sin_force_z_phases[reset_ids] = torch.rand(
+            (len(reset_ids), num_bodies), device=device
+        ) * 2 * torch.pi
+        env._duty_cycle_z_offset[reset_ids] = torch.rand(
+            len(reset_ids), device=device
+        ) * cycle_period
+
+    t = env.common_step_counter * env.step_dt
+
+    cycle_time = (t + env._duty_cycle_z_offset) % cycle_period
+    on_mask = (cycle_time < on_duration).float().unsqueeze(-1)  # [num_envs, 1]
+
+    if isinstance(force_amplitude, (list, tuple)):
+        amp = torch.tensor(force_amplitude, device=device).view(1, num_bodies)
+    else:
+        amp = force_amplitude
+
+    # Sinusoidal force magnitude: [num_envs, num_bodies]
+    fz = amp * torch.sin(
+        2 * torch.pi * frequency * t + env._sin_force_z_phases
+    ) * on_mask
+
+    # Build [num_envs, num_bodies, 3] with only Z component
+    forces = torch.zeros(num_envs, num_bodies, 3, device=device)
+    forces[:, :, 2] = fz
     torques = torch.zeros_like(forces)
 
     asset.set_external_force_and_torque(

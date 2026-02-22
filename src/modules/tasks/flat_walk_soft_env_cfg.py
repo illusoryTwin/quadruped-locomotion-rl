@@ -1,7 +1,7 @@
 import math
-import torch 
+import torch
 
-from isaaclab.utils import configclass 
+from isaaclab.utils import configclass
 
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
@@ -19,122 +19,58 @@ from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
-from isaaclab.managers import CurriculumTermCfg as CurrTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces
+from src.modules.events import apply_sinusoidal_forces, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_z
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 
-import isaaclab.envs.mdp as mdp
 
-
-def joint_deformations(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Observation term: current joint deformations from compliance manager. Shape [num_envs, 12]."""
+def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Observation term: base body Cartesian deformation from MSD. Shape [num_envs, 3]."""
     if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
-        deforms = env.compliance_manager._deformations
-        if deforms is not None:
-            return deforms
-    return torch.zeros(env.num_envs, env.scene["robot"].num_joints, device=env.device)
+        msd = env.compliance_manager._msd_system
+        if msd is not None:
+            return msd.state['x_def'][:, 0:3]
+    return torch.zeros(env.num_envs, 3, device=env.device)
 
 
-STEPS_PER_ITER = 24
-
-# stiffness schedule: (iteration_threshold, (kp_min, kp_max))
-STIFFNESS_SCHEDULE = [
-    # (0,    (3000.0, 4000.0)),
-    # (1000, (2000.0, 3000.0)),
-    (0, (300.0, 400.0)),
-    (1000, (200.0, 300.0)),
-    (2000, (100.0, 200.0)),
-    (3000, (50.0, 200.0)),
-]
-
-
-def stepped_stiffness_schedule(env, env_ids, old_value):
-    """Stiffness curriculum based on training iterations."""
-    current_iter = env.common_step_counter // STEPS_PER_ITER
-    kp_range = STIFFNESS_SCHEDULE[0][1]
-    for iter_threshold, range_val in STIFFNESS_SCHEDULE:
-        if current_iter >= iter_threshold:
-            kp_range = range_val
-        else:
-            break
-    if kp_range == old_value:
-        return mdp.modify_term_cfg.NO_CHANGE
-    return kp_range
-
-
-def track_compliant_body_positions_exp(
+def track_compliant_base_cartesian_exp(
     env: ManagerBasedRLEnv,
-    std: float = 0.05,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    pos_std: float = 0.25,
+    vel_std: float = 0.5,
 ) -> torch.Tensor:
-    """Reward for tracking MSD-deformed Cartesian body positions.
+    """Reward for tracking compliant Cartesian base position and velocity.
 
-    Compares the actual Cartesian displacement of each compliant body
-    (approximated via linear Jacobian) to the x_def - state deformed under forces.
+    L = ||x_sim - x_ref||^2 / pos_std^2 + ||v_sim - v_ref||^2 / vel_std^2
+    reward = exp(-L)
 
-    reward = exp(-||J @ (q_actual - q_target) - x_def||^2 / std^2)
-
-    All comparisons are in Cartesian space (meters), avoiding the J_pinv
-    linearization error that a joint-space reward would introduce.
+    Where:
+        x_ref = rigid_reference_position + MSD_deformation
+        v_ref = commanded_velocity_world + MSD_deformation_velocity
     """
-    if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
+    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
         return torch.zeros(env.num_envs, device=env.device)
 
-    cm = env.compliance_manager
-    if cm._msd_system is None or cm._deformations is None:
-        return torch.zeros(env.num_envs, device=env.device)
+    robot = env.scene["robot"]
+    x_sim = robot.data.root_pos_w[:, :3]
+    v_sim = robot.data.root_lin_vel_w[:, :3]
 
-    asset = env.scene[asset_cfg.name]
-    n_bodies = len(cm._compliant_body_names)
-    body_indices = [asset.body_names.index(n) for n in cm._compliant_body_names]
+    pos_err = torch.sum((x_sim - env._compliant_ref_pos) ** 2, dim=1)
+    vel_err = torch.sum((v_sim - env._compliant_ref_vel) ** 2, dim=1)
 
-    # Desired Cartesian deformation: [num_envs, n_bodies, 3]
-    x_def = cm._msd_system.state['x_def']
-    x_def_3d = x_def.reshape(env.num_envs, n_bodies, 3)
-
-    # Per-env linear Jacobians for compliant bodies: [num_envs, n_bodies, 3, n_dofs]
-    J_lin = asset.root_physx_view.get_jacobians()[:, body_indices, :3, :]
-    if cm._joint_mask is not None:
-        J_lin = J_lin.clone()
-        J_lin[:, :, :, ~cm._joint_mask] = 0
-
-    # Joint position error (actuated joints): [num_envs, num_joints]
-    q_error = asset.data.joint_pos - asset._data.joint_pos_target
-
-    # Pad with zeros for floating base DOFs: [num_envs, n_dofs]
-    q_error_full = torch.zeros(env.num_envs, J_lin.shape[-1], device=env.device)
-    q_error_full[:, 6:] = q_error
-
-    # Actual Cartesian displacement of compliant bodies: [num_envs, n_bodies, 3]
-    delta_p = torch.einsum('ebjd,ed->ebj', J_lin, q_error_full)
-
-    # Error between actual and desired Cartesian deformation
-    error = (delta_p - x_def_3d).reshape(env.num_envs, -1)
-
-    return torch.exp(-torch.sum(error * error, dim=1) / (std * std))
+    L = pos_err / (pos_std ** 2) + vel_err / (vel_std ** 2)
+    return torch.exp(-L)
 
 
 def feet_air_time(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
 ) -> torch.Tensor:
-    """Reward long steps taken by the feet using L2-kernel.
-
-    This function rewards the agent for taking steps that are longer than a threshold. This helps ensure
-    that the robot lifts its feet off the ground and takes steps. The reward is computed as the sum of
-    the time for which the feet are in the air.
-
-    If the commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
-    """
-    # extract the used quantities (to enable type-hinting)
+    """Reward long steps taken by the feet using L2-kernel."""
     contact_sensor = env.scene.sensors[sensor_cfg.name]
-    # compute the reward
     first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
     last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
     reward = torch.sum((last_air_time - threshold) * first_contact, dim=1)
-    # no reward for zero command
     reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
     return reward
 
@@ -183,7 +119,7 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class CommandsCfg:
-    base_velocity =  mdp.UniformVelocityCommandCfg(
+    base_velocity = mdp.UniformVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
@@ -196,18 +132,18 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(3000.0, 4000.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(100.0, 200)), # 300.0)), # 200.0, 1500.0)),
     )
 
 
-@configclass 
+@configclass
 class ActionsCfg:
     joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*"],
         scale=0.5,
         use_default_offset=True
-    ) 
+    )
 
 
 @configclass
@@ -220,7 +156,7 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.05, n_max=0.05)
         )
         velocity_commands = ObsTerm(
-            func=mdp.generated_commands, 
+            func=mdp.generated_commands,
             params={"command_name": "base_velocity"},
         )
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
@@ -239,12 +175,11 @@ class ObservationsCfg:
     @configclass
     class CriticCfg(PolicyCfg):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.15, n_max=0.15), scale=1.0)
-        deformations = ObsTerm(func=joint_deformations)
+        cartesian_deformation = ObsTerm(func=base_cartesian_deformation)
 
-    
+
     policy = PolicyCfg()
     critic = CriticCfg()
-
 
 
 @configclass
@@ -276,128 +211,83 @@ class EventCfg:
 
     # pull_robot = EventTerm(
     #     func=mdp.apply_external_force_torque,
-    #     mode="step",
-    #     # interval_range_s=(5.0, 7.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
-    #         "force_range": (-50.0, 50.0),
-    #         "torque_range": (-5.0, 5.0),
-    #     },
-    # )
-
-    # # Apply real physical forces - compliance manager will read these
-    # push_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="step",
-    #     # interval_range_s=(0.1, 5.5),
+    #     mode="interval", 
+    #     interval_range_s=(5.0, 5.5),
     #     params={
     #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_range": (-50.0, 50.0),
-    #         "torque_range": (-3.0, 3.0),
-    #     },
+    #         "force_range": (-20.0, 20.0),
+    #         "torque_range": (-5.0, 5.0),
+    #     }
     # )
 
-    pull_robot = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="interval",
-        interval_range_s=(5.0, 5.5),
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
-            "force_range": (-20.0, 20.0),
-            "torque_range": (-5.0, 5.0),
-        },
-    )
+    # push_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval",
+    #     interval_range_s=(0.1, 0.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-3.0, 3.0),
+    #     }
+    # )
 
-    # Apply real physical forces - compliance manager will read these
-    push_robot = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="interval",
-        interval_range_s=(0.1, 0.5),
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_range": (-10.0, 10.0),
-            "torque_range": (-3.0, 3.0),
-        },
-    )
-
-    # # pull_robot = EventTerm(
-    # #     func=mdp.apply_external_force_torque,
-    # #     mode="interval",
-    # #     interval_range_s=(3.0, 5.5),
+    # # # Apply sinusoidal forces to base body every step (XY only)
+    # # compliance_push = EventTerm(
+    # #     func=apply_sinusoidal_forces_xy,
+    # #     mode="step",
     # #     params={
-    # #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
-    # #         "force_range": (-10.0, 10.0),
-    # #         "torque_range": (-3.0, 3.0),
+    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    # #         "force_amplitude": [20.0],
+    # #         "frequency": 0.5,
     # #     },
     # # )
-
-    # # # Apply real physical forces - compliance manager will read these
-    # # push_robot = EventTerm(
-    # #     func=mdp.apply_external_force_torque,
-    # #     mode="interval",
-    # #     interval_range_s=(0.1, 2.5),
+    # # # Apply sinusoidal forces on Z axis only
+    # # compliance_push_z = EventTerm(
+    # #     func=apply_sinusoidal_forces_z,
+    # #     mode="step",
     # #     params={
-    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
-    # #         "force_range": (-10.0, 10.0),
-    # #         "torque_range": (-3.0, 3.0),
+    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    # #         "force_amplitude": [30.0],
+    # #         "frequency": 0.3,
     # #     },
     # # )
-
-    # Apply sinusoidal forces to monitored bodies every step
+    # Apply sinusoidal forces to base body every step (XY only)
     compliance_push = EventTerm(
         func=apply_sinusoidal_forces,
         mode="step",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=[
-                "base",
-                "FL_calf",
-                "FR_calf",
-                "RL_calf",
-                "RR_calf"
-            ]),
-            "force_amplitude": [30.0, 10.0, 10.0, 10.0, 10.0],
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_amplitude": [20.0],
             "frequency": 0.5,
-            "randomize_bodies": True,
+        },
+    ) 
+
+@configclass
+class RewardsCfg:
+    # # -- task
+    # track_lin_vel_xy_exp = RewardTerm(
+    #     func=mdp.track_lin_vel_xy_exp,
+    #     weight=0.7, # 1.5,
+    #     params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # )
+    # track_ang_vel_z_exp = RewardTerm(
+    #     func=mdp.track_ang_vel_z_exp,
+    #     weight=0.35, # 0.75,
+    #     params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # )
+    # -- compliance
+    track_compliant_cartesian = RewardTerm(
+        func=track_compliant_base_cartesian_exp,
+        weight=1.5,
+        params={
+            "pos_std": 0.5, # 0.25, # 0.05, # 0.25, 
+            "vel_std": 0.5
         },
     )
-
-
-@configclass 
-class RewardsCfg:
-    # -- task
-    track_lin_vel_xy_exp = RewardTerm(
-        func=mdp.track_lin_vel_xy_exp, 
-        weight=1.5, 
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
-    track_ang_vel_z_exp = RewardTerm(
-        func=mdp.track_ang_vel_z_exp, 
-        weight=0.75, 
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
     # -- penalties
-    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    track_compliant_targets = RewardTerm(
-        func=track_compliant_body_positions_exp,
-        weight=1.5, # 0.75,
-        params={"std": 0.5},
-    )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
-    # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
-
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
-
-    # feet_air_time = RewardTerm(
-    #     func=feet_air_time,
-    #     weight=0.25,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-    #         "command_name": "base_velocity",
-    #         "threshold": 0.5,
-    #     },
-    # )_compute_compliance_targets
 
 
 @configclass
@@ -405,22 +295,17 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     base_contact = DoneTerm(func=mdp.illegal_contact,
                             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"),
-                                    "threshold": 1.0}
+                                    "threshold": 1.0} # 100.0} # 1.0
     )
 
 
 @configclass
 class CurriculumCfg:
-    stiffness_curr = CurrTerm(
-        func=mdp.modify_term_cfg,
-        params={
-            "address": "commands.stiffness.ranges.kp",
-            "modify_fn": stepped_stiffness_schedule,
-        },
-    ) 
+    """Empty curriculum — overrides parent's terrain_levels."""
+    pass
 
 
-@configclass 
+@configclass
 class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
         scene: RoughTerrainSceneCfg = RoughTerrainSceneCfg(num_envs=4096, env_spacing=2.5)
         commands: CommandsCfg = CommandsCfg()
@@ -433,23 +318,13 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         compliance: ComplianceManagerCfg = ComplianceManagerCfg(
             enabled=True,
-            compliant_bodies={
-                "base": 1.0,
-                "FL_calf": 0.8,
-                "FR_calf": 0.8,
-                "RL_calf": 0.8,
-                "RR_calf": 0.8,
-            },
-            dt=0.02, # 0.004,
-            base_stiffness=1500.0,
+            compliant_bodies={"base": 1.0},
+            dt=0.02,
+            base_stiffness=500.0,
             base_inertia=0.5,
         )
 
         def __post_init__(self):
             self.decimation = 4
-            self.episode_length_s = 20.0 
+            self.episode_length_s = 20.0
             self.sim.dt = 0.005
-            
-            
-
-

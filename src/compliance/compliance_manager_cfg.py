@@ -32,8 +32,9 @@ class ComplianceManagerCfg:
         "RR_calf": 0.8,
     })
 
-    dt: float = 0.02 # 0.004
-    base_stiffness: float = 60.0 #TODO: check stiffness value
-    base_inertia: float = 0.5 #TODO: check inertia value
+    dt: float = 0.02
+    base_stiffness: float = 500.0
+    base_inertia: float = 0.5
     max_deformation: float = 0.5  # max absolute joint deformation in radians
+    max_cartesian_deformation: float = 0.2  # max absolute Cartesian deformation in meters
     debug: bool = False

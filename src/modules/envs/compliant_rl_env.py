@@ -2,6 +2,7 @@ from collections.abc import Sequence
 import torch
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.common import VecEnvStepReturn
+from isaaclab.utils.math import quat_apply_yaw
 from src.compliance import ComplianceManager, ComplianceManagerCfg
 
 
@@ -16,8 +17,10 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if hasattr(cfg, 'compliance') and cfg.compliance.enabled:
             self.compliance_manager = ComplianceManager(cfg.compliance, self)
 
-        # deformed joint position targets for use in reward computation
-        self._compliant_joint_targets = None
+        # Cartesian compliance buffers
+        self._rigid_ref_pos = None     # [num_envs, 3] rigid reference position (world frame)
+        self._compliant_ref_pos = None # [num_envs, 3] compliant reference position
+        self._compliant_ref_vel = None # [num_envs, 3] compliant reference velocity
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         # process actions
@@ -57,7 +60,7 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if "step" in self.event_manager.available_modes:
             self.event_manager.apply(mode="step")
 
-        # -- compute compliant targets before rewards so the reward can use them
+        # -- compute compliant Cartesian targets BEFORE rewards so the reward can use them
         self._compute_compliance_targets()
 
         # -- reward computation
@@ -83,7 +86,7 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
 
-        # -- log compliance deformations
+        # -- log compliance metrics
         self._log_compliance_metrics()
 
         # -- compute observations
@@ -92,14 +95,13 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
     def _compute_compliance_targets(self):
-        """Compute compliant joint position targets from deformations.
-
-        Stores deformed targets on self._compliant_joint_targets for use
-        by the reward function. Does NOT modify PD targets — the policy
-        must learn to reach these positions through reward shaping.
+        """Compute Cartesian compliant reference position and velocity for the base body.
         """
+
         if self.compliance_manager is None:
             return
+
+        robot = self.scene["robot"]
 
         # Read per-env stiffness from command if available
         base_stiffness = None
@@ -109,89 +111,86 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         except (KeyError, RuntimeError):
             pass
 
-        deformations = self.compliance_manager.compute(
+        self.compliance_manager.compute(
             dt=self.physics_dt, base_stiffness=base_stiffness
         )
 
-        robot = self.scene["robot"]
+        # Extract base Cartesian deformation from MSD state (first 3 DOFs = base XYZ)
+        msd = self.compliance_manager._msd_system
+        x_def_base = msd.state['x_def'][:, 0:3]   # [num_envs, 3] world frame
+        dx_def_base = msd.state['dx_def'][:, 0:3]  # [num_envs, 3] world frame
 
-        targets = robot._data.joint_pos_target.clone()
-        targets += deformations 
-   
-        self._compliant_joint_targets = targets
+        # Clamp Cartesian deformation
+        max_def = self.cfg.compliance.max_cartesian_deformation
+        x_def_base = x_def_base.clamp(-max_def, max_def)
+
+        # Initialize rigid reference on first call
+        if self._rigid_ref_pos is None:
+            self._rigid_ref_pos = robot.data.root_pos_w[:, :3].clone()
+
+        # Get commanded velocity in body frame and rotate to world frame
+        v_cmd = self.command_manager.get_command("base_velocity")  # [num_envs, 4]
+        v_cmd_body = torch.zeros(self.num_envs, 3, device=self.device)
+        v_cmd_body[:, 0] = v_cmd[:, 0]  # vx
+        v_cmd_body[:, 1] = v_cmd[:, 1]  # vy
+        v_cmd_world = quat_apply_yaw(robot.data.root_quat_w, v_cmd_body)
+
+        # Update rigid reference by integrating commanded velocity
+        self._rigid_ref_pos = self._rigid_ref_pos + v_cmd_world * self.step_dt
+
+        # Clamp drift: prevent rigid reference from drifting too far from actual position
+        actual_pos = robot.data.root_pos_w[:, :3]
+        drift = self._rigid_ref_pos - actual_pos
+        drift_norm = drift.norm(dim=1, keepdim=True).clamp(min=1e-6)
+        max_drift = 0.1  # meters
+        clamped_drift = drift * (max_drift / drift_norm).clamp(max=1.0)
+        self._rigid_ref_pos = actual_pos + clamped_drift
+
+        # Compute compliant references
+        self._compliant_ref_pos = self._rigid_ref_pos + x_def_base
+        self._compliant_ref_vel = v_cmd_world + dx_def_base
+
+
 
     def _log_compliance_metrics(self):
-        """Log compliance-related metrics to extras for tensorboard."""
-        # Always ensure extras["log"] exists (RSL-RL expects it every step)
+        """Log Cartesian compliance metrics to extras for tensorboard."""
         if "log" not in self.extras:
             self.extras["log"] = {}
 
-        if self.compliance_manager is None or self.compliance_manager._deformations is None:
+        if self.compliance_manager is None:
             return
 
-        deformations = self.compliance_manager._deformations
         robot = self.scene["robot"]
-        num_joints = robot.num_joints
-        joint_names = robot.joint_names
 
-        # --- Deformation stats ---
-        self.extras["log"]["compliance/mean_deformation"] = deformations.abs().mean().item()
-        self.extras["log"]["compliance/max_deformation"] = deformations.abs().max().item()
-        self.extras["log"]["compliance/rms_deformation"] = deformations.pow(2).mean().sqrt().item()
+        # --- MSD Cartesian deformation stats ---
+        msd = self.compliance_manager._msd_system
+        if msd is not None:
+            x_def_base = msd.state['x_def'][:, 0:3]
+            self.extras["log"]["compliance/x_def_norm"] = x_def_base.norm(dim=1).mean().item()
+            self.extras["log"]["compliance/x_def_x"] = x_def_base[:, 0].abs().mean().item()
+            self.extras["log"]["compliance/x_def_y"] = x_def_base[:, 1].abs().mean().item()
+            self.extras["log"]["compliance/x_def_z"] = x_def_base[:, 2].abs().mean().item()
 
-        mean_per_joint = deformations.abs().mean(dim=0)
-        for i, name in enumerate(joint_names):
-            self.extras["log"][f"compliance/deformation_{name}"] = mean_per_joint[i].item()
+        # --- Cartesian tracking errors ---
+        if self._compliant_ref_pos is not None:
+            actual_pos = robot.data.root_pos_w[:, :3]
+            actual_vel = robot.data.root_lin_vel_w[:, :3]
 
-        # --- Tracking comparison: default (PD target) vs compliant vs actual ---
-        actual_pos = robot.data.joint_pos  # [num_envs, num_joints]
-        default_target = robot._data.joint_pos_target  # [num_envs, num_joints]
+            pos_error = (actual_pos - self._compliant_ref_pos).norm(dim=1)
+            vel_error = (actual_vel - self._compliant_ref_vel).norm(dim=1)
 
-        if self._compliant_joint_targets is not None:
-            compliant_target = self._compliant_joint_targets
+            self.extras["log"]["compliance/pos_error"] = pos_error.mean().item()
+            self.extras["log"]["compliance/vel_error"] = vel_error.mean().item()
 
-            # Per-joint errors averaged across envs
-            for i, name in enumerate(joint_names):
-                default_err = (actual_pos[:, i] - default_target[:, i]).abs().mean().item()
-                compliant_err = (actual_pos[:, i] - compliant_target[:, i]).abs().mean().item()
-                deform_val = deformations[:, i].mean().item()
-
-                self.extras["log"][f"tracking/default_error_{name}"] = default_err
-                self.extras["log"][f"tracking/compliant_error_{name}"] = compliant_err
-                self.extras["log"][f"tracking/deformation_signed_{name}"] = deform_val
-
-                # Per-joint state comparison: actual vs rigid vs compliant
-                self.extras["log"][f"state/actual_pos_{name}"] = actual_pos[:, i].mean().item()
-                self.extras["log"][f"state/default_target_{name}"] = default_target[:, i].mean().item()
-                self.extras["log"][f"state/compliant_target_{name}"] = compliant_target[:, i].mean().item()
-
-            # Aggregate errors across all joints
-            default_err_all = (actual_pos - default_target).pow(2).sum(dim=1)
-            compliant_err_all = (actual_pos - compliant_target).pow(2).sum(dim=1)
-
-            self.extras["log"]["tracking/mean_default_error"] = default_err_all.sqrt().mean().item()
-            self.extras["log"]["tracking/mean_compliant_error"] = compliant_err_all.sqrt().mean().item()
-
-            # Log the actual reward value (before weight) for debugging
-            std = 0.25  # match the reward config
-            reward_raw = torch.exp(-compliant_err_all / (std * std))
-            self.extras["log"]["tracking/compliant_reward_raw"] = reward_raw.mean().item()
-            reward_default = torch.exp(-default_err_all / (std * std))
-            self.extras["log"]["tracking/default_reward_raw"] = reward_default.mean().item()
+            # Rigid reference drift from actual position
+            drift = (self._rigid_ref_pos - actual_pos).norm(dim=1)
+            self.extras["log"]["compliance/rigid_ref_drift"] = drift.mean().item()
 
         # --- Stiffness command ---
         try:
             kp_cmd = self.command_manager.get_command("stiffness")
             self.extras["log"]["compliance/stiffness_kp_mean"] = kp_cmd.mean().item()
         except (KeyError, RuntimeError):
-            pass
-
-        # --- Curriculum: current stiffness range ---
-        try:
-            kp_range = self.cfg.commands.stiffness.ranges.kp
-            self.extras["log"]["curriculum/stiffness_kp_min"] = kp_range[0]
-            self.extras["log"]["curriculum/stiffness_kp_max"] = kp_range[1]
-        except (AttributeError, KeyError):
             pass
 
         # --- External forces on compliant bodies ---
@@ -208,3 +207,8 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         # Call parent reset
         super()._reset_idx(env_ids)
+
+        # Reset rigid reference to actual position after parent reset
+        if self._rigid_ref_pos is not None:
+            robot = self.scene["robot"]
+            self._rigid_ref_pos[env_ids] = robot.data.root_pos_w[env_ids, :3].clone()
