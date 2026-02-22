@@ -138,13 +138,12 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # Update rigid reference by integrating commanded velocity
         self._rigid_ref_pos = self._rigid_ref_pos + v_cmd_world * self.step_dt
 
-        # Clamp drift: prevent rigid reference from drifting too far from actual position
+        # Detach gradient if reference drifts too far, but never recompute from actual position
         actual_pos = robot.data.root_pos_w[:, :3]
-        drift = self._rigid_ref_pos - actual_pos
-        drift_norm = drift.norm(dim=1, keepdim=True).clamp(min=1e-6)
-        max_drift = 0.1  # meters
-        clamped_drift = drift * (max_drift / drift_norm).clamp(max=1.0)
-        self._rigid_ref_pos = actual_pos + clamped_drift
+        drift_norm = (self._rigid_ref_pos - actual_pos).norm(dim=1)
+        max_drift = 1.0  # meters
+        if (drift_norm > max_drift).any():
+            self._rigid_ref_pos = self._rigid_ref_pos.detach()
 
         # Compute compliant references
         self._compliant_ref_pos = self._rigid_ref_pos + x_def_base
