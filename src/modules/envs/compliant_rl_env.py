@@ -2,7 +2,6 @@ from collections.abc import Sequence
 import torch
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.common import VecEnvStepReturn
-from isaaclab.utils.math import quat_apply_yaw
 from src.compliance import ComplianceManager, ComplianceManagerCfg
 
 
@@ -20,7 +19,7 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # Cartesian compliance buffers
         self._rigid_ref_pos = None     # [num_envs, 3] rigid reference position (world frame)
         self._compliant_ref_pos = None # [num_envs, 3] compliant reference position
-        self._compliant_ref_vel = None # [num_envs, 3] compliant reference velocity
+        self._compliant_ref_vel = None # [num_envs, 3] compliant reference velocity (MSD deformation vel)
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         # process actions
@@ -124,30 +123,13 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         max_def = self.cfg.compliance.max_cartesian_deformation
         x_def_base = x_def_base.clamp(-max_def, max_def)
 
-        # Initialize rigid reference on first call
-        if self._rigid_ref_pos is None:
-            self._rigid_ref_pos = robot.data.root_pos_w[:, :3].clone()
+        # Rigid reference = env_origin + base_position command
+        pos_cmd = self.command_manager.get_command("base_position")  # [num_envs, 3]
+        self._rigid_ref_pos = self.scene.env_origins[:, :3] + pos_cmd
 
-        # Get commanded velocity in body frame and rotate to world frame
-        v_cmd = self.command_manager.get_command("base_velocity")  # [num_envs, 4]
-        v_cmd_body = torch.zeros(self.num_envs, 3, device=self.device)
-        v_cmd_body[:, 0] = v_cmd[:, 0]  # vx
-        v_cmd_body[:, 1] = v_cmd[:, 1]  # vy
-        v_cmd_world = quat_apply_yaw(robot.data.root_quat_w, v_cmd_body)
-
-        # Update rigid reference by integrating commanded velocity
-        self._rigid_ref_pos = self._rigid_ref_pos + v_cmd_world * self.step_dt
-
-        # Detach gradient if reference drifts too far, but never recompute from actual position
-        actual_pos = robot.data.root_pos_w[:, :3]
-        drift_norm = (self._rigid_ref_pos - actual_pos).norm(dim=1)
-        max_drift = 1.0  # meters
-        if (drift_norm > max_drift).any():
-            self._rigid_ref_pos = self._rigid_ref_pos.detach()
-
-        # Compute compliant references
+        # Compute compliant references: rigid reference + MSD deformation
         self._compliant_ref_pos = self._rigid_ref_pos + x_def_base
-        self._compliant_ref_vel = v_cmd_world + dx_def_base
+        self._compliant_ref_vel = dx_def_base
 
 
 
@@ -206,8 +188,3 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         # Call parent reset
         super()._reset_idx(env_ids)
-
-        # Reset rigid reference to actual position after parent reset
-        if self._rigid_ref_pos is not None:
-            robot = self.scene["robot"]
-            self._rigid_ref_pos[env_ids] = robot.data.root_pos_w[env_ids, :3].clone()

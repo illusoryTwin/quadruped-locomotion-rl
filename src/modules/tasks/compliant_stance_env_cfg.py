@@ -20,11 +20,28 @@ from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 
-from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
 from src.modules.events import apply_sinusoidal_forces, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_z
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
+from src.modules.commands.base_position_command import BasePositionCommandCfg
 
+
+
+def track_base_position_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_position",
+    std: float = 0.1,
+) -> torch.Tensor:
+    """Reward for tracking the commanded base position.
+
+    reward = exp(-||pos_actual - (env_origin + pos_cmd)||^2 / std^2)
+    """
+    robot = env.scene["robot"]
+    pos_cmd = env.command_manager.get_command(command_name)
+    target_pos = env.scene.env_origins[:, :3] + pos_cmd
+    pos_err = (robot.data.root_pos_w[:, :3] - target_pos).square().sum(dim=1)
+    return torch.exp(-pos_err / std**2)
 
 
 def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -122,20 +139,28 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
 
 @configclass 
 class CommandsCfg:
-    base_velocity = mdp.UniformVelocityCommandCfg(
-        asset_name="robot",
+    # base_velocity = mdp.UniformVelocityCommandCfg(
+    #     asset_name="robot",
+    #     resampling_time_range=(10.0, 10.0),
+    #     ranges=mdp.UniformVelocityCommandCfg.Ranges(
+    #         lin_vel_x=(0.0, 0.0),
+    #         lin_vel_y=(0.0, 0.0),
+    #         ang_vel_z=(0.0, 0.0),
+    #         heading=(-math.pi, math.pi)
+    #     )
+    # )
+    base_position = BasePositionCommandCfg(
         resampling_time_range=(10.0, 10.0),
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 0.0),
-            lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(0.0, 0.0),
-            heading=(-math.pi, math.pi)
-        )
+        ranges=BasePositionCommandCfg.Ranges(
+            x=(-1.5, 1.5),
+            y=(-1.5, 1.5),
+            z=(0.3, 0.3),
+        ),
     )
-    stiffness = StiffnessCommandCfg(
-        resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(100.0, 200.0)),
-    )
+    # stiffness = StiffnessCommandCfg(
+    #     resampling_time_range=(10.0, 10.0), # (5.0, 10.0),
+    #     ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 70.0)), # 70.0, 100.0)), # kp=(100.0, 200.0)),
+    # )
 
 @configclass 
 class ActionsCfg:
@@ -164,20 +189,24 @@ class ObservationsCfg:
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05)
         )
-        velocity_commands = ObsTerm(
+        # velocity_commands = ObsTerm(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "base_velocity"}
+        # )
+        base_position_commands = ObsTerm(
             func=mdp.generated_commands,
-            params={"command_name": "base_velocity"}
+            params={"command_name": "base_position"}
         )
-        stiffness_commands = ObsTerm(
-            func=mdp.generated_commands,
-            params={"command_name": "stiffness"}
-        )
+        # stiffness_commands = ObsTerm(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "stiffness"}
+        # )
         # base_ang_vel = 
 
     @configclass 
     class CriticCfg(PolicyCfg):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-1.5, n_max=1.5))
-        cartesian_deformation = ObsTerm(func=base_cartesian_deformation)
+        # cartesian_deformation = ObsTerm(func=base_cartesian_deformation)
 
     policy = PolicyCfg()
     critic = CriticCfg()
@@ -200,94 +229,99 @@ class EventCfg:
                 "yaw": (-0.5, 0.5),
             },
         }
-
-    )
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "position_range": (-1.0, 1.0),
-            "velocity_range": (-0.5, 0.5),
-        }
-    )
-    pull_robot = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="interval", 
-        interval_range_s=(5.0, 5.5),
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_range": (-20.0, 20.0),
-            "torque_range": (-5.0, 5.0),
-        }
-    )
-    push_robot = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="interval",
-        # interval_range_s=(0.1, 0.2),
-        interval_range_s=(0.1, 0.5),
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_range": (-10.0, 10.0),
-            "torque_range": (-3.0, 3.0),
-            # "force_range": (-20.0, 20.0),
-            # "torque_range": (-5.0, 5.0),
-        }
     )
 
-    # # Apply sinusoidal forces to base body every step (XY only)
-    # compliance_push_xy = EventTerm(
-    #     func=apply_sinusoidal_forces_xy,
-    #     mode="step",
+    
+    # reset_robot_joints = EventTerm(
+    #     func=mdp.reset_joints_by_offset,
+    #     mode="reset",
+    #     params={
+    #         "position_range": (-1.0, 1.0),
+    #         "velocity_range": (-0.5, 0.5),
+    #     }
+    # )
+    # pull_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval", 
+    #     interval_range_s=(5.0, 5.5),
     #     params={
     #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_amplitude": [20.0],
-    #         "frequency": 0.5,
-    #     },
-    # ) 
+    #         "force_range": (-20.0, 20.0),
+    #         "torque_range": (-5.0, 5.0),
+    #     }
+    # )
+    # push_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval",
+    #     # interval_range_s=(0.1, 0.2),
+    #     interval_range_s=(0.1, 0.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-3.0, 3.0),
+    #         # "force_range": (-20.0, 20.0),
+    #         # "torque_range": (-5.0, 5.0),
+    #     }
+    # )
+
+    # Apply sinusoidal forces to base body every step (XY only)
+    compliance_push_xy = EventTerm(
+        func=apply_sinusoidal_forces_xy,
+        mode="step",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_amplitude": [20.0],
+            "frequency": 0.5,
+        },
+    ) 
 
 
 
 @configclass 
 class RewardsCfg:
-    track_lin_vel = RewardTerm(
-        func=mdp.track_lin_vel_xy_exp,
-        weight=0.25, # 1.0,
-        params={
-            "command_name": "base_velocity",
-            "std": 0.5,
-        }
-    )
-    track_ang_vel = RewardTerm(
-        func=mdp.track_ang_vel_z_exp,
-        weight=0.125, # 0.5,
-        params={
-            "command_name": "base_velocity",
-            "std": 0.5,
-        }
-    )
-    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
+    # track_lin_vel = RewardTerm(
+    #     func=mdp.track_lin_vel_xy_exp,
+    #     weight=1.5, # 0.25, # 1.0,
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "std": 0.5,
+    #     }
+    # )
+    # track_ang_vel = RewardTerm(
+    #     func=mdp.track_ang_vel_z_exp,
+    #     weight=0.75, # 0.125, # 0.5,
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "std": 0.5,
+    #     }
+    # )
 
-    dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
-    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
-
+    track_base_pos = RewardTerm(
+        func=track_base_position_exp,
+        weight=1.0,
+        params={
+            "command_name": "base_position",
+            "std": 0.1,
+        },
+    )
+    joint_default_pos = RewardTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
 
     flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     base_height = RewardTerm(
         func=mdp.base_height_l2,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot"), "target_height": 0.34},
+        weight=-1.5,
+        params={"asset_cfg": SceneEntityCfg("robot"), 
+                "target_height": 0.3
+        },
     )
 
-    # -- compliance
-    track_compliant_vel = RewardTerm(
-        func=track_compliant_velocity_l2,
-        weight=1.0,
-    )
-    track_compliant_pos = RewardTerm(
-        func=track_compliant_base_pos_tanh,
-        weight=0.5,
-        params={"pos_scale": 0.5},
-    )
+    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
+    dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
+    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
 
 
 
@@ -306,7 +340,7 @@ class CurriculumCfg:
 
 
 @configclass
-class UnitreeGo2StanceEnvCfg(LocomotionVelocityRoughEnvCfg):
+class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg): # LocomotionVelocityRoughEnvCfg):
         scene: RoughTerrainSceneCfg = RoughTerrainSceneCfg(num_envs=4096, env_spacing=2.5)
         commands: CommandsCfg = CommandsCfg()
         actions: ActionsCfg = ActionsCfg()
@@ -316,15 +350,20 @@ class UnitreeGo2StanceEnvCfg(LocomotionVelocityRoughEnvCfg):
         events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
-        compliance: ComplianceManagerCfg = ComplianceManagerCfg(
-            enabled=True,
-            compliant_bodies={"base": 1.0},
-            dt=0.02,
-            base_stiffness=100.0,
-            base_inertia=0.5,
-        )
+        # compliance: ComplianceManagerCfg = ComplianceManagerCfg(
+        #     enabled=True,
+        #     compliant_bodies={"base": 1.0},
+        #     dt=0.02,
+        #     base_stiffness=100.0,
+        #     base_inertia=0.5,
+        # )
 
         def __post_init__(self):
             self.decimation = 4
             self.episode_length_s = 20.0
             self.sim.dt = 0.005
+            self.sim.render_interval = self.decimation
+            if self.scene.height_scanner is not None:
+                self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+            if self.scene.contact_forces is not None:
+                self.scene.contact_forces.update_period = self.sim.dt
