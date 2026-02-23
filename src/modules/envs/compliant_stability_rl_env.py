@@ -1,14 +1,14 @@
-# Integrates COMMANDED VELOCITY for calculating the saturated position (supposed that we command velocity)
+# Uses VELOCITY for calculations (supposed that we command velocity)
 
 from collections.abc import Sequence
 import torch
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.common import VecEnvStepReturn
-from isaaclab.utils.math import quat_apply_yaw
+
 from src.compliance import ComplianceManager, ComplianceManagerCfg
 
 
-class CompliantRLEnv(ManagerBasedRLEnv):
+class CompliantStabilityRLEnv(ManagerBasedRLEnv):
     """RL environment with compliance support."""
 
     def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None, **kwargs):
@@ -124,23 +124,13 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         # max_def = self.cfg.compliance.max_cartesian_deformation
         # x_def_base = x_def_base.clamp(-max_def, max_def)
 
-        # Initialize rigid reference on first call
-        if self._rigid_ref_pos is None:
-            self._rigid_ref_pos = robot.data.root_pos_w[:, :3].clone()
+        # Rigid reference = current actual position (closed-loop, no drift)
+        self._rigid_ref_pos = robot.data.root_pos_w[:, :3].clone()
+        actual_vel = robot.data.root_lin_vel_w[:, :3]
 
-        # Get commanded velocity in body frame and rotate to world frame
-        v_cmd = self.command_manager.get_command("base_velocity")  # [num_envs, 4]
-        v_cmd_body = torch.zeros(self.num_envs, 3, device=self.device)
-        v_cmd_body[:, 0] = v_cmd[:, 0]  # vx
-        v_cmd_body[:, 1] = v_cmd[:, 1]  # vy
-        v_cmd_world = quat_apply_yaw(robot.data.root_quat_w, v_cmd_body)
-
-        # Update rigid reference by integrating commanded velocity
-        self._rigid_ref_pos = self._rigid_ref_pos + v_cmd_world * self.step_dt
-
-        # Compute compliant references
+        # Compliant references = actual state + MSD deformation
         self._compliant_ref_pos = self._rigid_ref_pos + x_def_base
-        self._compliant_ref_vel = v_cmd_world + dx_def_base
+        self._compliant_ref_vel = actual_vel + dx_def_base
 
 
 

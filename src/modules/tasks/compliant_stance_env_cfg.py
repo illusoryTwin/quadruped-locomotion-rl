@@ -160,9 +160,9 @@ class CommandsCfg:
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.5),
-            lin_vel_y=(-1.0, 1.5),
-            ang_vel_z=(0.5, 0.5),
+            lin_vel_x=(-0.0, 0.0),
+            lin_vel_y=(-0.0, 0.0),
+            ang_vel_z=(0.0, 0.0),
             heading=(-math.pi, math.pi)
         )
     )
@@ -179,7 +179,6 @@ class ActionsCfg:
         scale=0.5,
         use_default_offset=True
     )
-
 
 
 @configclass 
@@ -345,7 +344,7 @@ class CurriculumCfg:
 
 
 @configclass
-class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg): # LocomotionVelocityRoughEnvCfg):
+class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg):
         scene: RoughTerrainSceneCfg = RoughTerrainSceneCfg(num_envs=4096, env_spacing=2.5)
         commands: CommandsCfg = CommandsCfg()
         actions: ActionsCfg = ActionsCfg()

@@ -47,11 +47,19 @@ gym.register(
     },
 ) 
 
+# gym.register(
+#     id="go2_compliant_stance",
+#     entry_point="src.modules.envs.compliant_rl_env:CompliantRLEnv",
+#     disable_env_checker=True,
+#     kwargs={
+#         "env_cfg_entry_point": "src.modules.tasks.compliant_stance_env_cfg:UnitreeGo2StanceEnvCfg",
+#         "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2SoftPPORunnerCfg",
+#     },
+# ) 
 
 gym.register(
     id="go2_compliant_stance",
-    # entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    entry_point="src.modules.envs.compliant_rl_env:CompliantRLEnv",
+    entry_point="src.modules.envs.compliant_stability_rl_env:CompliantStabilityRLEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": "src.modules.tasks.compliant_stance_env_cfg:UnitreeGo2StanceEnvCfg",

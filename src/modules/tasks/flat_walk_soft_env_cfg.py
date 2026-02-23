@@ -20,7 +20,8 @@ from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 
-from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
+
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
 from src.modules.events import apply_sinusoidal_forces, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_z
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
@@ -35,16 +36,41 @@ def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.zeros(env.num_envs, 3, device=env.device)
 
 
+
+def track_base_position_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_position",
+    std: float = 0.1,
+) -> torch.Tensor:
+    """Reward for tracking the commanded base position.
+
+    reward = exp(-||pos_actual - (env_origin + pos_cmd)||^2 / std^2)
+    """
+    robot = env.scene["robot"]
+    pos_cmd = env.command_manager.get_command(command_name)
+    target_pos = env.scene.env_origins[:, :3] + pos_cmd
+    pos_err = (robot.data.root_pos_w[:, :3] - target_pos).square().sum(dim=1)
+    return torch.exp(-pos_err / std**2)
+
+
+def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Observation term: base body Cartesian deformation."""
+    if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
+        msd = env.compliance_manager._msd_system
+        if msd is not None:
+            return msd.state['x_def'][:, 0:3]
+    return torch.zeros(env.num_envs, 3, device=env.device)
+
+
 def track_compliant_base_pos_tanh(
     env: ManagerBasedRLEnv,
     pos_scale: float = 0.5,
 ) -> torch.Tensor:
-    """Saturated position tracking penalty using tanh.
+    """Saturated position tracking penalty.
 
     reward = -tanh(||x_sim - x_ref|| / pos_scale)
 
-    Gives gradient for small errors but saturates at -1 for large drift,
-    preventing accumulated integration error from dominating the reward.
+    Gives gradient for small errors but saturates at -1 for large drift.
     """
     if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
         return torch.zeros(env.num_envs, device=env.device)
@@ -55,6 +81,25 @@ def track_compliant_base_pos_tanh(
     return -torch.tanh(pos_err / pos_scale)
 
 
+def track_compliant_base_pos_exp(
+    env: ManagerBasedRLEnv,
+    std: float = 0.25,
+) -> torch.Tensor:
+    """Exponential position tracking reward for compliant base reference.
+
+    reward = exp(-||x_sim - x_ref||^2 / std^2)
+
+    Returns 1.0 at zero error and decays toward 0 for large errors.
+    """
+    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    robot = env.scene["robot"]
+    pos_err_sq = (robot.data.root_pos_w[:, :3] - env._compliant_ref_pos).square().sum(dim=1)
+
+    return torch.exp(-pos_err_sq / std**2)
+
+
 def track_compliant_velocity_l2(
     env: ManagerBasedRLEnv,
 ) -> torch.Tensor:
@@ -63,7 +108,6 @@ def track_compliant_velocity_l2(
     vel_ref = commanded_velocity_world + MSD_deformation_velocity
 
     When no external forces: dx_def ~ 0 -> tracks commanded velocity.
-    When pushed: dx_def != 0 -> robot is rewarded for yielding to the push.
 
     reward = -||v_sim - vel_ref||^2
     """
@@ -137,15 +181,15 @@ class CommandsCfg:
         resampling_time_range=(10.0, 10.0),
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
             lin_vel_x=(-1.0, 1.5),
-            lin_vel_y=(-1.0, 1.0),
-            ang_vel_z=(-1.5, 1.5),
+            lin_vel_y=(-0.5, 0.5),
+            ang_vel_z=(-1.0, 1.0),
             heading=(-math.pi, math.pi)
         )
     )
 
     stiffness = StiffnessCommandCfg(
-        resampling_time_range=(5.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(100.0, 200)), # 300.0)), # 200.0, 1500.0)),
+        resampling_time_range=(5.0, 5.0),
+        ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 70.0)), # 300.0)), # 200.0, 1500.0)),
     )
 
 
@@ -163,7 +207,14 @@ class ActionsCfg:
 class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        # Observation history
+        concatenate_terms = True 
+        history_length = 10 
+        flatten_history_dim = True
+
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        actions = ObsTerm(func=mdp.last_action)
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05)
@@ -172,18 +223,16 @@ class ObservationsCfg:
             func=mdp.generated_commands,
             params={"command_name": "base_velocity"},
         )
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
-        actions = ObsTerm(func=mdp.last_action)
-        height_scan = ObsTerm(
-            func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-            noise=Unoise(n_min=-0.1, n_max=0.1)
-        )
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         stiffness_cmd = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "stiffness"},
         )
+        # height_scan = ObsTerm(
+        #     func=mdp.height_scan,
+        #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+        #     noise=Unoise(n_min=-0.1, n_max=0.1)
+        # )
 
     @configclass
     class CriticCfg(PolicyCfg):
@@ -217,7 +266,7 @@ class EventCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "position_range": (-1.0, 1.0),
+            "position_range": (-0.5, 0.5),
             "velocity_range": (-0.5, 0.5),
         },
     )
@@ -278,36 +327,43 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     # -- task 
-    # track_lin_vel_xy_exp = RewardTerm(
-    #     func=mdp.track_ang_vel_z_exp,
-    #     weight=0.7,
-    #     params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    # )
-    # track_ang_vel_z_exp = RewardTerm(
-    #     func=mdp.track_ang_vel_z_exp,
-    #     weight=0.35,
-    #     params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    # )
+    track_lin_vel_xy_exp = RewardTerm(
+        func=mdp.track_ang_vel_z_exp,
+        weight=0.2,
+        params={"command_name": "base_velocity", "std": 0.5}
+    )
+    track_ang_vel_z_exp = RewardTerm(
+        func=mdp.track_ang_vel_z_exp,
+        weight=0.1,
+        params={"command_name": "base_velocity", "std": 0.5}
+    )
     
-    # # -- compliance
+    track_compliant_pos = RewardTerm(
+        func=track_compliant_base_pos_exp,
+        weight=1.0,
+        params={"std": 0.25},
+    )
     # track_compliant_vel = RewardTerm(
     #     func=track_compliant_velocity_l2,
     #     weight=1.0,
     # )
-    # track_compliant_pos = RewardTerm(
-    #     func=track_compliant_base_pos_tanh,
-    #     weight=0.5,
-    #     params={"pos_scale": 0.5},
+
+    # joint_default_pos = RewardTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.1,
+    #     params={"asset_cfg": SceneEntityCfg("robot")},
     # )
-    # -- posture
+
     flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     base_height = RewardTerm(
         func=mdp.base_height_l2,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot"), "target_height": 0.34},
+        weight=-1.5,
+        params={"asset_cfg": SceneEntityCfg("robot"), 
+                "target_height": 0.3
+        },
     )
-    # -- penalties
-    dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
+
+    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
 
@@ -317,7 +373,7 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     base_contact = DoneTerm(func=mdp.illegal_contact,
                             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"),
-                                    "threshold": 1.0} # 100.0} # 1.0
+                                    "threshold": 1.0}
     )
 
 
@@ -328,7 +384,7 @@ class CurriculumCfg:
 
 
 @configclass
-class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
+class UnitreeGo2WalkSoftEnvCfg(ManagerBasedRLEnvCfg):
         scene: RoughTerrainSceneCfg = RoughTerrainSceneCfg(num_envs=4096, env_spacing=2.5)
         commands: CommandsCfg = CommandsCfg()
         actions: ActionsCfg = ActionsCfg()
@@ -342,7 +398,7 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
             enabled=True,
             compliant_bodies={"base": 1.0},
             dt=0.02,
-            base_stiffness=500.0,
+            base_stiffness=100.0,
             base_inertia=0.5,
         )
 
@@ -350,3 +406,8 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.decimation = 4
             self.episode_length_s = 20.0
             self.sim.dt = 0.005
+            self.sim.render_interval = self.decimation
+            if self.scene.height_scanner is not None:
+                self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+            if self.scene.contact_forces is not None:
+                self.scene.contact_forces.update_period = self.sim.dt
