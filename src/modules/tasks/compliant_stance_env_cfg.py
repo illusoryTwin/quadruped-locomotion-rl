@@ -76,7 +76,7 @@ def track_compliant_base_pos_exp(
     env: ManagerBasedRLEnv,
     std: float = 0.25,
 ) -> torch.Tensor:
-    """Exponential position tracking reward for compliant base reference.
+    """Exponential position tracking reward for compliant base reference (XYZ).
 
     reward = exp(-||x_sim - x_ref||^2 / std^2)
 
@@ -89,6 +89,25 @@ def track_compliant_base_pos_exp(
     pos_err_sq = (robot.data.root_pos_w[:, :3] - env._compliant_ref_pos).square().sum(dim=1)
 
     return torch.exp(-pos_err_sq / std**2)
+
+
+def track_compliant_base_height_exp(
+    env: ManagerBasedRLEnv,
+    std: float = 0.1,
+) -> torch.Tensor:
+    """Exponential height tracking reward for compliant base reference (Z only).
+
+    reward = exp(-(z_sim - z_ref)^2 / std^2)
+
+    Returns 1.0 at zero error and decays toward 0 for large errors.
+    """
+    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    robot = env.scene["robot"]
+    z_err_sq = (robot.data.root_pos_w[:, 2] - env._compliant_ref_pos[:, 2]).square()
+
+    return torch.exp(-z_err_sq / std**2)
 
 
 def track_compliant_velocity_l2(
@@ -266,13 +285,23 @@ class EventCfg:
     #     }
     # )
 
-    # Apply sinusoidal forces to base body every step (XY only)
-    compliance_push_xy = EventTerm(
-        func=apply_sinusoidal_forces_xy,
+    # # Apply sinusoidal forces to base body every step (XY only)
+    # compliance_push_xy = EventTerm(
+    #     func=apply_sinusoidal_forces_xy,
+    #     mode="step",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [20.0],
+    #         "frequency": 0.5,
+    #     },
+    # ) 
+    # Apply sinusoidal forces to base body (Z only)
+    compliance_push_z = EventTerm(
+        func=apply_sinusoidal_forces_z,
         mode="step",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [20.0],
+            "force_amplitude": [15.0],
             "frequency": 0.5,
         },
     ) 
@@ -298,31 +327,33 @@ class RewardsCfg:
         }
     )
 
+    # Rewards for compliance 
     track_compliant_pos = RewardTerm(
-        func=track_compliant_base_pos_exp,
+        func=track_compliant_base_height_exp,
         weight=1.0,
-        params={"std": 0.075}, # 0.25},
+        params={"std": 0.08}, # 0.075},
     )
-
     # track_compliant_vel = RewardTerm(
     #     func=track_compliant_velocity_l2,
     #     weight=1.0,
     # )
 
-    # joint_default_pos = RewardTerm(
-    #     func=mdp.joint_deviation_l1,
-    #     weight=-0.1,
-    #     params={"asset_cfg": SceneEntityCfg("robot")},
-    # )
 
-    flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-    base_height = RewardTerm(
-        func=mdp.base_height_l2,
-        weight=-1.5,
-        params={"asset_cfg": SceneEntityCfg("robot"), 
-                "target_height": 0.3
-        },
+    # ============================
+    ## Additional rewards
+    # base_height = RewardTerm(
+    #     func=mdp.base_height_l2,
+    #     weight=-1.5,
+    #     params={"asset_cfg": SceneEntityCfg("robot"), 
+    #             "target_height": 0.3
+    #     },
+    # )
+    joint_default_pos = RewardTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot")},
     )
+    flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
 
     dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
