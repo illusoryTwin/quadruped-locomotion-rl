@@ -2,6 +2,7 @@ from collections.abc import Sequence
 import torch
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.envs.common import VecEnvStepReturn
+from isaaclab.utils.math import quat_apply_yaw
 from src.compliance import ComplianceManager, ComplianceManagerCfg
 
 
@@ -110,26 +111,34 @@ class CompliantRLEnv(ManagerBasedRLEnv):
         except (KeyError, RuntimeError):
             pass
 
-        self.compliance_manager.compute(
-            dt=self.physics_dt, base_stiffness=base_stiffness
-        )
+        self.compliance_manager.compute(base_stiffness=base_stiffness)
 
         # Extract base Cartesian deformation from MSD state (first 3 DOFs = base XYZ)
         msd = self.compliance_manager._msd_system
         x_def_base = msd.state['x_def'][:, 0:3]   # [num_envs, 3] world frame
         dx_def_base = msd.state['dx_def'][:, 0:3]  # [num_envs, 3] world frame
 
-        # Clamp Cartesian deformation
-        max_def = self.cfg.compliance.max_cartesian_deformation
-        x_def_base = x_def_base.clamp(-max_def, max_def)
+        # # Clamp Cartesian deformation
+        # max_def = self.cfg.compliance.max_cartesian_deformation
+        # x_def_base = x_def_base.clamp(-max_def, max_def)
 
-        # Rigid reference = env_origin + base_position command
-        pos_cmd = self.command_manager.get_command("base_position")  # [num_envs, 3]
-        self._rigid_ref_pos = self.scene.env_origins[:, :3] + pos_cmd
+        # Initialize rigid reference on first call
+        if self._rigid_ref_pos is None:
+            self._rigid_ref_pos = robot.data.root_pos_w[:, :3].clone()
 
-        # Compute compliant references: rigid reference + MSD deformation
+        # Get commanded velocity in body frame and rotate to world frame
+        v_cmd = self.command_manager.get_command("base_velocity")  # [num_envs, 4]
+        v_cmd_body = torch.zeros(self.num_envs, 3, device=self.device)
+        v_cmd_body[:, 0] = v_cmd[:, 0]  # vx
+        v_cmd_body[:, 1] = v_cmd[:, 1]  # vy
+        v_cmd_world = quat_apply_yaw(robot.data.root_quat_w, v_cmd_body)
+
+        # Update rigid reference by integrating commanded velocity
+        self._rigid_ref_pos = self._rigid_ref_pos + v_cmd_world * self.step_dt
+
+        # Compute compliant references
         self._compliant_ref_pos = self._rigid_ref_pos + x_def_base
-        self._compliant_ref_vel = dx_def_base
+        self._compliant_ref_vel = v_cmd_world + dx_def_base
 
 
 
@@ -188,3 +197,8 @@ class CompliantRLEnv(ManagerBasedRLEnv):
 
         # Call parent reset
         super()._reset_idx(env_ids)
+
+        # Reset rigid reference to actual position after parent reset
+        if self._rigid_ref_pos is not None:
+            robot = self.scene["robot"]
+            self._rigid_ref_pos[env_ids] = robot.data.root_pos_w[env_ids, :3].clone()

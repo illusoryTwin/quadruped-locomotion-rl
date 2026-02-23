@@ -65,11 +65,10 @@ class ComplianceManager:
         if self._msd_system is not None:
             self._msd_system.reset(env_ids)
 
-    def compute(self, dt: float, base_stiffness: torch.Tensor | None = None) -> torch.Tensor:
+    def compute(self, base_stiffness: torch.Tensor | None = None) -> torch.Tensor:
         """Compute joint deformations from external forces.
 
         Args:
-            dt: Time step (unused, MSD uses its own dt from config)
             base_stiffness: Per-env base stiffness
                 If provided, uses analytical per-env MSD update.
                 If None, uses precomputed matrices with fixed stiffness from config.

@@ -45,7 +45,7 @@ def track_base_position_exp(
 
 
 def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Observation term: base body Cartesian deformation from MSD. Shape [num_envs, 3]."""
+    """Observation term: base body Cartesian deformation."""
     if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
         msd = env.compliance_manager._msd_system
         if msd is not None:
@@ -57,12 +57,11 @@ def track_compliant_base_pos_tanh(
     env: ManagerBasedRLEnv,
     pos_scale: float = 0.5,
 ) -> torch.Tensor:
-    """Saturated position tracking penalty using tanh.
+    """Saturated position tracking penalty.
 
     reward = -tanh(||x_sim - x_ref|| / pos_scale)
 
-    Gives gradient for small errors but saturates at -1 for large drift,
-    preventing accumulated integration error from dominating the reward.
+    Gives gradient for small errors but saturates at -1 for large drift.
     """
     if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
         return torch.zeros(env.num_envs, device=env.device)
@@ -73,6 +72,25 @@ def track_compliant_base_pos_tanh(
     return -torch.tanh(pos_err / pos_scale)
 
 
+def track_compliant_base_pos_exp(
+    env: ManagerBasedRLEnv,
+    std: float = 0.25,
+) -> torch.Tensor:
+    """Exponential position tracking reward for compliant base reference.
+
+    reward = exp(-||x_sim - x_ref||^2 / std^2)
+
+    Returns 1.0 at zero error and decays toward 0 for large errors.
+    """
+    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    robot = env.scene["robot"]
+    pos_err_sq = (robot.data.root_pos_w[:, :3] - env._compliant_ref_pos).square().sum(dim=1)
+
+    return torch.exp(-pos_err_sq / std**2)
+
+
 def track_compliant_velocity_l2(
     env: ManagerBasedRLEnv,
 ) -> torch.Tensor:
@@ -81,7 +99,6 @@ def track_compliant_velocity_l2(
     vel_ref = commanded_velocity_world + MSD_deformation_velocity
 
     When no external forces: dx_def ~ 0 -> tracks commanded velocity.
-    When pushed: dx_def != 0 -> robot is rewarded for yielding to the push.
 
     reward = -||v_sim - vel_ref||^2
     """
@@ -139,28 +156,20 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
 
 @configclass 
 class CommandsCfg:
-    # base_velocity = mdp.UniformVelocityCommandCfg(
-    #     asset_name="robot",
-    #     resampling_time_range=(10.0, 10.0),
-    #     ranges=mdp.UniformVelocityCommandCfg.Ranges(
-    #         lin_vel_x=(0.0, 0.0),
-    #         lin_vel_y=(0.0, 0.0),
-    #         ang_vel_z=(0.0, 0.0),
-    #         heading=(-math.pi, math.pi)
-    #     )
-    # )
-    base_position = BasePositionCommandCfg(
+    base_velocity = mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
         resampling_time_range=(10.0, 10.0),
-        ranges=BasePositionCommandCfg.Ranges(
-            x=(-1.5, 1.5),
-            y=(-1.5, 1.5),
-            z=(0.3, 0.3),
-        ),
+        ranges=mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.5),
+            lin_vel_y=(-1.0, 1.5),
+            ang_vel_z=(0.5, 0.5),
+            heading=(-math.pi, math.pi)
+        )
     )
-    # stiffness = StiffnessCommandCfg(
-    #     resampling_time_range=(10.0, 10.0), # (5.0, 10.0),
-    #     ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 70.0)), # 70.0, 100.0)), # kp=(100.0, 200.0)),
-    # )
+    stiffness = StiffnessCommandCfg(
+        resampling_time_range=(5.0, 5.0), # (5.0, 10.0),
+        ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 70.0)), # 70.0, 100.0)), # kp=(100.0, 200.0)),
+    )
 
 @configclass 
 class ActionsCfg:
@@ -189,24 +198,20 @@ class ObservationsCfg:
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05)
         )
-        # velocity_commands = ObsTerm(
-        #     func=mdp.generated_commands,
-        #     params={"command_name": "base_velocity"}
-        # )
-        base_position_commands = ObsTerm(
+        velocity_commands = ObsTerm(
             func=mdp.generated_commands,
-            params={"command_name": "base_position"}
+            params={"command_name": "base_velocity"}
         )
-        # stiffness_commands = ObsTerm(
-        #     func=mdp.generated_commands,
-        #     params={"command_name": "stiffness"}
-        # )
-        # base_ang_vel = 
+        stiffness_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "stiffness"}
+        )
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
 
     @configclass 
     class CriticCfg(PolicyCfg):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-1.5, n_max=1.5))
-        # cartesian_deformation = ObsTerm(func=base_cartesian_deformation)
+        cartesian_deformation = ObsTerm(func=base_cartesian_deformation)
 
     policy = PolicyCfg()
     critic = CriticCfg()
@@ -230,16 +235,14 @@ class EventCfg:
             },
         }
     )
-
-    
-    # reset_robot_joints = EventTerm(
-    #     func=mdp.reset_joints_by_offset,
-    #     mode="reset",
-    #     params={
-    #         "position_range": (-1.0, 1.0),
-    #         "velocity_range": (-0.5, 0.5),
-    #     }
-    # )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "position_range": (-0.5, 0.5),
+            "velocity_range": (-0.5, 0.5),
+        }
+    )
     # pull_robot = EventTerm(
     #     func=mdp.apply_external_force_torque,
     #     mode="interval", 
@@ -279,36 +282,38 @@ class EventCfg:
 
 @configclass 
 class RewardsCfg:
-    # track_lin_vel = RewardTerm(
-    #     func=mdp.track_lin_vel_xy_exp,
-    #     weight=1.5, # 0.25, # 1.0,
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "std": 0.5,
-    #     }
-    # )
-    # track_ang_vel = RewardTerm(
-    #     func=mdp.track_ang_vel_z_exp,
-    #     weight=0.75, # 0.125, # 0.5,
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "std": 0.5,
-    #     }
+    track_lin_vel = RewardTerm(
+        func=mdp.track_lin_vel_xy_exp,
+        weight=0.2, # 0.5, # 1.5,
+        params={
+            "command_name": "base_velocity",
+            "std": 0.5,
+        }
+    )
+    track_ang_vel = RewardTerm(
+        func=mdp.track_ang_vel_z_exp,
+        weight=0.1, # 0.25, # 0.75,
+        params={
+            "command_name": "base_velocity",
+            "std": 0.5,
+        }
+    )
+
+    track_compliant_pos = RewardTerm(
+        func=track_compliant_base_pos_exp,
+        weight=1.0,
+        params={"std": 0.25},
+    )
+    # track_compliant_vel = RewardTerm(
+    #     func=track_compliant_velocity_l2,
+    #     weight=1.0,
     # )
 
-    track_base_pos = RewardTerm(
-        func=track_base_position_exp,
-        weight=1.0,
-        params={
-            "command_name": "base_position",
-            "std": 0.1,
-        },
-    )
-    joint_default_pos = RewardTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
+    # joint_default_pos = RewardTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.1,
+    #     params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
 
     flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     base_height = RewardTerm(
@@ -350,13 +355,13 @@ class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg): # LocomotionVelocityRoughEnv
         events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
-        # compliance: ComplianceManagerCfg = ComplianceManagerCfg(
-        #     enabled=True,
-        #     compliant_bodies={"base": 1.0},
-        #     dt=0.02,
-        #     base_stiffness=100.0,
-        #     base_inertia=0.5,
-        # )
+        compliance: ComplianceManagerCfg = ComplianceManagerCfg(
+            enabled=True,
+            compliant_bodies={"base": 1.0},
+            dt=0.02,
+            base_stiffness=100.0,
+            base_inertia=0.5,
+        )
 
         def __post_init__(self):
             self.decimation = 4
