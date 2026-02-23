@@ -93,21 +93,45 @@ def track_compliant_base_pos_exp(
 
 def track_compliant_base_height_exp(
     env: ManagerBasedRLEnv,
+    target_height: float = 0.3,
     std: float = 0.1,
 ) -> torch.Tensor:
     """Exponential height tracking reward for compliant base reference (Z only).
 
-    reward = exp(-(z_sim - z_ref)^2 / std^2)
+    z_ref = env_origin_z + target_height + x_def_z
 
-    Returns 1.0 at zero error and decays toward 0 for large errors.
+    No forces  -> x_def_z ~ 0  -> robot stays at target_height
+    Push down  -> x_def_z < 0  -> robot yields below target_height
+    Push up    -> x_def_z > 0  -> robot extends above target_height
+
+    reward = exp(-(z_sim - z_ref)^2 / std^2)
     """
-    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
+    if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
         return torch.zeros(env.num_envs, device=env.device)
 
+    msd = env.compliance_manager._msd_system
+    x_def_z = msd.state['x_def'][:, 2]  # Z deformation from MSD
+
     robot = env.scene["robot"]
-    z_err_sq = (robot.data.root_pos_w[:, 2] - env._compliant_ref_pos[:, 2]).square()
+    z_ref = env.scene.env_origins[:, 2] + target_height + x_def_z
+    z_err_sq = (robot.data.root_pos_w[:, 2] - z_ref).square()
 
     return torch.exp(-z_err_sq / std**2)
+
+
+def feet_contact(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    threshold: float = 1.0,
+) -> torch.Tensor:
+    """Reward for keeping all feet in contact with the ground.
+
+    Returns the fraction of feet in contact (0 to 1).
+    """
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    net_forces = contact_sensor.data.net_forces_w_history[:, 0, sensor_cfg.body_ids, :]
+    in_contact = net_forces.norm(dim=-1) > threshold  # [num_envs, num_feet]
+    return in_contact.float().mean(dim=1)
 
 
 def track_compliant_velocity_l2(
@@ -330,8 +354,8 @@ class RewardsCfg:
     # Rewards for compliance 
     track_compliant_pos = RewardTerm(
         func=track_compliant_base_height_exp,
-        weight=1.0,
-        params={"std": 0.08}, # 0.075},
+        weight=2.0, # 1.5, # 1.0,
+        params={"target_height": 0.3, "std": 0.08},
     )
     # track_compliant_vel = RewardTerm(
     #     func=track_compliant_velocity_l2,
@@ -348,12 +372,19 @@ class RewardsCfg:
     #             "target_height": 0.3
     #     },
     # )
-    joint_default_pos = RewardTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot")},
+    illegal_contact = RewardTerm(
+        func=mdp.illegal_contact,
+        weight=-1.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base", ".*_thigh"]),
+                "threshold": 1.0},
     )
-    flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    feet_on_ground = RewardTerm(
+        func=feet_contact,
+        weight=0.5,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+                "threshold": 1.0},
+    )
+    flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
 
     dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
