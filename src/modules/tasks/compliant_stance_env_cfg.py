@@ -301,8 +301,9 @@ class RewardsCfg:
     track_compliant_pos = RewardTerm(
         func=track_compliant_base_pos_exp,
         weight=1.0,
-        params={"std": 0.25},
+        params={"std": 0.075}, # 0.25},
     )
+
     # track_compliant_vel = RewardTerm(
     #     func=track_compliant_velocity_l2,
     #     weight=1.0,
