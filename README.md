@@ -57,7 +57,7 @@ A special kind of event is created for compliance learning:
 
 ## Launch
 
-Use the following command to launch compliant policy training (supposed you have installed Isaac Sim 5.1):
+Use the following command to launch compliant policy training (supposed you have installed Isaac Sim 5.1):9
 
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
 

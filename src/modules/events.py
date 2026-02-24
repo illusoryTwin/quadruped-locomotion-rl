@@ -16,9 +16,9 @@ def apply_sinusoidal_forces_xy(
     """Apply sinusoidal forces on all 3 axes with independent phases per axis,
     with intermittent on/off duty cycle per environment.
 
-    During the "on" window forces follow:
+    During the "on" mode forces follow:
         F_i = amplitude * sin(2*pi*freq*t + phase_i)
-    During the "off" window forces are zero.
+    During the "off" mode forces are zero.
 
     Each environment gets a random phase offset into the duty cycle so they
     don't all pause at the same time.
