@@ -32,10 +32,10 @@ class BasePositionCommand(CommandTerm):
         return self.pos_command
 
     def _resample_command(self, env_ids: Sequence[int]):
-        r = self.pos_command[env_ids]
-        r[:, 0].uniform_(*self.cfg.ranges.x)
-        r[:, 1].uniform_(*self.cfg.ranges.y)
-        r[:, 2].uniform_(*self.cfg.ranges.z)
+        n = len(env_ids)
+        self.pos_command[env_ids, 0] = torch.empty(n, device=self.device).uniform_(*self.cfg.ranges.x)
+        self.pos_command[env_ids, 1] = torch.empty(n, device=self.device).uniform_(*self.cfg.ranges.y)
+        self.pos_command[env_ids, 2] = torch.empty(n, device=self.device).uniform_(*self.cfg.ranges.z)
 
     def _update_command(self):
         pass

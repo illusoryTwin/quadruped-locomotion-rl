@@ -1,4 +1,4 @@
-# Uses VELOCITY for calculations (supposed that we command velocity)
+# Uses POSITION COMMAND as rigid reference for compliance calculations
 
 from collections.abc import Sequence
 import torch
@@ -120,17 +120,17 @@ class CompliantStabilityRLEnv(ManagerBasedRLEnv):
         x_def_base = msd.state['x_def'][:, 0:3]   # [num_envs, 3] world frame
         dx_def_base = msd.state['dx_def'][:, 0:3]  # [num_envs, 3] world frame
 
-        # # Clamp Cartesian deformation
-        # max_def = self.cfg.compliance.max_cartesian_deformation
-        # x_def_base = x_def_base.clamp(-max_def, max_def)
+        # Rigid reference = position command (absolute, independent of actual_pos)
+        try:
+            pos_cmd = self.command_manager.get_command("base_position")  # [num_envs, 3]
+            self._rigid_ref_pos = self.scene.env_origins[:, :3] + pos_cmd
+        except (KeyError, RuntimeError):
+            # Fallback for envs without position command (e.g. walk task)
+            self._rigid_ref_pos = robot.data.root_pos_w[:, :3].clone()
 
-        # Rigid reference = current actual position (closed-loop, no drift)
-        self._rigid_ref_pos = robot.data.root_pos_w[:, :3].clone()
-        actual_vel = robot.data.root_lin_vel_w[:, :3]
-
-        # Compliant references = actual state + MSD deformation
+        # Compliant references = rigid reference + MSD deformation
         self._compliant_ref_pos = self._rigid_ref_pos + x_def_base
-        self._compliant_ref_vel = actual_vel + dx_def_base
+        self._compliant_ref_vel = dx_def_base.clone()
 
 
 
@@ -190,7 +190,11 @@ class CompliantStabilityRLEnv(ManagerBasedRLEnv):
         # Call parent reset
         super()._reset_idx(env_ids)
 
-        # Reset rigid reference to actual position after parent reset
+        # Reset rigid reference from position command after parent reset
         if self._rigid_ref_pos is not None:
-            robot = self.scene["robot"]
-            self._rigid_ref_pos[env_ids] = robot.data.root_pos_w[env_ids, :3].clone()
+            try:
+                pos_cmd = self.command_manager.get_command("base_position")
+                self._rigid_ref_pos[env_ids] = self.scene.env_origins[env_ids, :3] + pos_cmd[env_ids]
+            except (KeyError, RuntimeError):
+                robot = self.scene["robot"]
+                self._rigid_ref_pos[env_ids] = robot.data.root_pos_w[env_ids, :3].clone()

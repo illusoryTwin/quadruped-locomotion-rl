@@ -1,9 +1,6 @@
-import math
 import torch
 
 from isaaclab.utils import configclass
-
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -22,26 +19,10 @@ from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_z
+from src.modules.events import apply_sinusoidal_forces_z
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 
-
-
-def track_base_position_exp(
-    env: ManagerBasedRLEnv,
-    command_name: str = "base_position",
-    std: float = 0.1,
-) -> torch.Tensor:
-    """Reward for tracking the commanded base position.
-
-    reward = exp(-||pos_actual - (env_origin + pos_cmd)||^2 / std^2)
-    """
-    robot = env.scene["robot"]
-    pos_cmd = env.command_manager.get_command(command_name)
-    target_pos = env.scene.env_origins[:, :3] + pos_cmd
-    pos_err = (robot.data.root_pos_w[:, :3] - target_pos).square().sum(dim=1)
-    return torch.exp(-pos_err / std**2)
 
 
 def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -53,69 +34,35 @@ def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.zeros(env.num_envs, 3, device=env.device)
 
 
-def track_compliant_base_pos_tanh(
+def track_compliant_base_pos_cmd_exp(
     env: ManagerBasedRLEnv,
-    pos_scale: float = 0.5,
-) -> torch.Tensor:
-    """Saturated position tracking penalty.
-
-    reward = -tanh(||x_sim - x_ref|| / pos_scale)
-
-    Gives gradient for small errors but saturates at -1 for large drift.
-    """
-    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    robot = env.scene["robot"]
-    pos_err = (robot.data.root_pos_w[:, :3] - env._compliant_ref_pos).norm(dim=1)
-
-    return -torch.tanh(pos_err / pos_scale)
-
-
-def track_compliant_base_pos_exp(
-    env: ManagerBasedRLEnv,
-    std: float = 0.25,
-) -> torch.Tensor:
-    """Exponential position tracking reward for compliant base reference (XYZ).
-
-    reward = exp(-||x_sim - x_ref||^2 / std^2)
-
-    Returns 1.0 at zero error and decays toward 0 for large errors.
-    """
-    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    robot = env.scene["robot"]
-    pos_err_sq = (robot.data.root_pos_w[:, :3] - env._compliant_ref_pos).square().sum(dim=1)
-
-    return torch.exp(-pos_err_sq / std**2)
-
-
-def track_compliant_base_height_exp(
-    env: ManagerBasedRLEnv,
-    target_height: float = 0.3,
+    command_name: str = "base_position",
     std: float = 0.1,
 ) -> torch.Tensor:
-    """Exponential height tracking reward for compliant base reference (Z only).
+    """Exponential height tracking reward: command_z + deformation_z.
 
-    z_ref = env_origin_z + target_height + x_def_z
+    z_ref = env_origin_z + pos_cmd_z + x_def_z
+    reward = exp(-(z_actual - z_ref)^2 / std^2)
 
-    No forces  -> x_def_z ~ 0  -> robot stays at target_height
-    Push down  -> x_def_z < 0  -> robot yields below target_height
-    Push up    -> x_def_z > 0  -> robot extends above target_height
-
-    reward = exp(-(z_sim - z_ref)^2 / std^2)
+    The rigid reference (env_origin + pos_cmd) is independent of actual_pos,
+    so the reward signal is always meaningful for the policy.
     """
     if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
         return torch.zeros(env.num_envs, device=env.device)
 
-    msd = env.compliance_manager._msd_system
-    x_def_z = msd.state['x_def'][:, 2]  # Z deformation from MSD
-
     robot = env.scene["robot"]
-    z_ref = env.scene.env_origins[:, 2] + target_height + x_def_z
-    z_err_sq = (robot.data.root_pos_w[:, 2] - z_ref).square()
+    pos_cmd = env.command_manager.get_command(command_name)  # [num_envs, 3]
+    # print("pos_cmd[:, 2]", pos_cmd[:, 2])
+    z_rigid = env.scene.env_origins[:, 2] + pos_cmd[:, 2]
 
+    msd = env.compliance_manager._msd_system
+    x_def_z = msd.state['x_def'][:, 2]  # Z deformation
+    z_ref = z_rigid + x_def_z
+    
+    # print("z_rigid", z_rigid)
+    # print("robot.data.root_pos_w[:, 2]", robot.data.root_pos_w[:, 2][0])
+    # print("z_ref", z_ref)
+    z_err_sq = (robot.data.root_pos_w[:, 2] - z_ref).square()
     return torch.exp(-z_err_sq / std**2)
 
 
@@ -132,26 +79,6 @@ def feet_contact(
     net_forces = contact_sensor.data.net_forces_w_history[:, 0, sensor_cfg.body_ids, :]
     in_contact = net_forces.norm(dim=-1) > threshold  # [num_envs, num_feet]
     return in_contact.float().mean(dim=1)
-
-
-def track_compliant_velocity_l2(
-    env: ManagerBasedRLEnv,
-) -> torch.Tensor:
-    """Penalty for deviating from compliant velocity reference.
-
-    vel_ref = commanded_velocity_world + MSD_deformation_velocity
-
-    When no external forces: dx_def ~ 0 -> tracks commanded velocity.
-
-    reward = -||v_sim - vel_ref||^2
-    """
-    if not hasattr(env, '_compliant_ref_vel') or env._compliant_ref_vel is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    robot = env.scene["robot"]
-    vel_err = torch.sum((robot.data.root_lin_vel_w[:, :3] - env._compliant_ref_vel) ** 2, dim=1)
-
-    return -vel_err
 
 
 
@@ -197,23 +124,22 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
     )
 
 
-@configclass 
+@configclass
 class CommandsCfg:
-    base_velocity = mdp.UniformVelocityCommandCfg(
-        asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.0, 0.0),
-            lin_vel_y=(-0.0, 0.0),
-            ang_vel_z=(0.0, 0.0),
-            heading=(-math.pi, math.pi)
-        )
+    base_position = BasePositionCommandCfg(
+        # resampling_time_range=(10.0, 10.0),
+        resampling_time_range=(7.0, 7.0),
+        ranges=BasePositionCommandCfg.Ranges(
+            x=(0.0, 0.0),
+            y=(0.0, 0.0),
+            z=(0.25, 0.4),
+            # z=(0.3, 0.38),
+        ),
     )
     stiffness = StiffnessCommandCfg(
-        resampling_time_range=(5.0, 5.0), # (5.0, 10.0),
-        # ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 70.0)), # 70.0, 100.0)), # kp=(100.0, 200.0)),
-        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 170.0)), # 70.0, 100.0)), # kp=(100.0, 200.0)),
-
+        resampling_time_range=(5.0, 5.0),
+        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 120.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 170.0)),
     )
 
 @configclass 
@@ -242,9 +168,9 @@ class ObservationsCfg:
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05)
         )
-        velocity_commands = ObsTerm(
+        position_commands = ObsTerm(
             func=mdp.generated_commands,
-            params={"command_name": "base_velocity"}
+            params={"command_name": "base_position"}
         )
         stiffness_commands = ObsTerm(
             func=mdp.generated_commands,
@@ -287,40 +213,40 @@ class EventCfg:
             "velocity_range": (-0.5, 0.5),
         }
     )
-    # pull_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="interval", 
-    #     interval_range_s=(5.0, 5.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_range": (-20.0, 20.0),
-    #         "torque_range": (-5.0, 5.0),
-    #     }
-    # )
-    # push_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="interval",
-    #     # interval_range_s=(0.1, 0.2),
-    #     interval_range_s=(0.1, 0.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_range": (-10.0, 10.0),
-    #         "torque_range": (-3.0, 3.0),
-    #         # "force_range": (-20.0, 20.0),
-    #         # "torque_range": (-5.0, 5.0),
-    #     }
-    # )
+    # # pull_robot = EventTerm(
+    # #     func=mdp.apply_external_force_torque,
+    # #     mode="interval", 
+    # #     interval_range_s=(5.0, 5.5),
+    # #     params={
+    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    # #         "force_range": (-20.0, 20.0),
+    # #         "torque_range": (-5.0, 5.0),
+    # #     }
+    # # )
+    # # push_robot = EventTerm(
+    # #     func=mdp.apply_external_force_torque,
+    # #     mode="interval",
+    # #     # interval_range_s=(0.1, 0.2),
+    # #     interval_range_s=(0.1, 0.5),
+    # #     params={
+    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    # #         "force_range": (-10.0, 10.0),
+    # #         "torque_range": (-3.0, 3.0),
+    # #         # "force_range": (-20.0, 20.0),
+    # #         # "torque_range": (-5.0, 5.0),
+    # #     }
+    # # )
 
-    # # Apply sinusoidal forces to base body every step (XY only)
-    # compliance_push_xy = EventTerm(
-    #     func=apply_sinusoidal_forces_xy,
-    #     mode="step",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_amplitude": [20.0],
-    #         "frequency": 0.5,
-    #     },
-    # ) 
+    # # # Apply sinusoidal forces to base body every step (XY only)
+    # # compliance_push_xy = EventTerm(
+    # #     func=apply_sinusoidal_forces_xy,
+    # #     mode="step",
+    # #     params={
+    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    # #         "force_amplitude": [20.0],
+    # #         "frequency": 0.5,
+    # #     },
+    # # ) 
     # Apply sinusoidal forces to base body (Z only)
     compliance_push_z = EventTerm(
         func=apply_sinusoidal_forces_z,
@@ -334,35 +260,14 @@ class EventCfg:
 
 
 
-@configclass 
+@configclass
 class RewardsCfg:
-    track_lin_vel = RewardTerm(
-        func=mdp.track_lin_vel_xy_exp,
-        weight=0.2, # 0.5, # 1.5,
-        params={
-            "command_name": "base_velocity",
-            "std": 0.5,
-        }
-    )
-    track_ang_vel = RewardTerm(
-        func=mdp.track_ang_vel_z_exp,
-        weight=0.1, # 0.25, # 0.75,
-        params={
-            "command_name": "base_velocity",
-            "std": 0.5,
-        }
-    )
-
-    # Rewards for compliance 
+    # Compliant position tracking (XYZ) — command + MSD deformation
     track_compliant_pos = RewardTerm(
-        func=track_compliant_base_height_exp,
-        weight=2.0, # 1.5, # 1.0,
-        params={"target_height": 0.3, "std": 0.08},
+        func=track_compliant_base_pos_cmd_exp,
+        weight=2.0,
+        params={"command_name": "base_position", "std": 0.04}, # 0.08},
     )
-    # track_compliant_vel = RewardTerm(
-    #     func=track_compliant_velocity_l2,
-    #     weight=1.0,
-    # )
 
 
     # ============================
