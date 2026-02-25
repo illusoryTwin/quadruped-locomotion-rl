@@ -19,7 +19,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 
@@ -57,6 +57,11 @@ def track_compliant_base_pos_cmd_exp(
 
     msd = env.compliance_manager._msd_system
     x_def_z = msd.state['x_def'][:, 2]  # Z deformation
+    
+    max_def = 0.15 # 0.25
+    x_def_z = max_def * torch.tanh(x_def_z / max_def)
+    
+    # print("x_def_z", x_def_z)
     z_ref = z_rigid + x_def_z
     
     # print("z_rigid", z_rigid)
@@ -132,13 +137,16 @@ class CommandsCfg:
         ranges=BasePositionCommandCfg.Ranges(
             x=(0.0, 0.0),
             y=(0.0, 0.0),
-            z=(0.25, 0.4),
+            z=(0.32, 0.32),
+            # z=(0.25, 0.4),
             # z=(0.3, 0.38),
         ),
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 120.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)),
+
+        ranges=StiffnessCommandCfg.Ranges(kp=(70.0, 100.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 170.0)),
     )
 
@@ -237,23 +245,24 @@ class EventCfg:
     # #     }
     # # )
 
-    # # # Apply sinusoidal forces to base body every step (XY only)
-    # # compliance_push_xy = EventTerm(
-    # #     func=apply_sinusoidal_forces_xy,
-    # #     mode="step",
-    # #     params={
-    # #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    # #         "force_amplitude": [20.0],
-    # #         "frequency": 0.5,
-    # #     },
-    # # ) 
+    # # Apply sinusoidal forces to base body every step (XY only)
+    # compliance_push_xy = EventTerm(
+    #     func=apply_sinusoidal_forces_xy,
+    #     mode="step",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [50.0],
+    #         "frequency": 0.5,
+    #     },
+    # ) 
+
     # Apply sinusoidal forces to base body (Z only)
     compliance_push_z = EventTerm(
         func=apply_sinusoidal_forces_z,
         mode="step",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [15.0],
+            "force_amplitude": [70.0],
             "frequency": 0.5,
         },
     ) 
@@ -292,10 +301,14 @@ class RewardsCfg:
                 "threshold": 1.0},
     )
     flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
-
+    joint_default_pos = RewardTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
     dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) # -1e-7)
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7) # -2e-7)
-    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
+    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) #-0.01)
 
 
 
