@@ -11,15 +11,16 @@ Compliance implementation (in task-space) is in the `feat/compliance_task_space`
 The compliance system models deformations as second-order mass-spring-damper (MSD) system.
 External forces applied to the robot's bodies, and the resulting deformations in Cartesian space are computed by integrating the MSD dynamics. The policy is rewarded for tracking these deformed states.
 
-`CompliantRLEnv` (in `src/modules/envs/compliant_rl_env.py`) extends `ManagerBasedRLEnv` — it overrides `step()` to call `_compute_compliance_targets()` after physics simulation to calculate new state under compliance. Uses open-loop integration of commanded velocity for the rigid reference.
+- `CompliantRLEnv` (in `src/modules/envs/compliant_rl_env.py`) extends `ManagerBasedRLEnv` — it overrides `step()` to call `_compute_compliance_targets()` after physics simulation to calculate new state under compliance. Uses open-loop integration of commanded velocity for the rigid reference.
 
-`CompliantStabilityRLEnv` (in `src/modules/envs/compliant_stability_rl_env.py`) — variant that uses actual robot position/velocity as the rigid reference (closed-loop, no drift). Used for the stance task.
-
-
-`ComplianceManager` (in `src/compliance/compliance_manager.py`) implements the core compliance logic: it reads external forces from monitored bodies and updates the MSD model to produce deformation vectors. Compliance parameters are defined in `compliance_manager_cfg.py` — compliant bodies, per-body Cartesian stiffness scales, timestep (`dt`), base stiffness, and base inertia.
+- `CompliantStabilityRLEnv` (in `src/modules/envs/compliant_stability_rl_env.py`) — variant that uses actual robot position/velocity as the rigid reference (closed-loop, no drift). Used for the stance task.
 
 
-The task configuration is in `flat_walk_soft_env_cfg.py` (`UnitreeGo2WalkSoftEnvCfg`) for a walking task.
+- `ComplianceManager` (in `src/compliance/compliance_manager.py`) implements the core compliance logic: it reads external forces from monitored bodies and updates the MSD model to produce deformation vectors. Compliance parameters are defined in `compliance_manager_cfg.py` — compliant bodies, per-body Cartesian stiffness scales, timestep (`dt`), base stiffness, and base inertia.
+
+
+- The task configuration is in `flat_walk_soft_env_cfg.py` (`UnitreeGo2WalkSoftEnvCfg`) for a walking task.
+
 The compliant stance task (stable stance under external forces) is in `compliant_stance_env_cfg.py` (`UnitreeGo2StanceEnvCfg`).
 
 ### Deformations
@@ -57,18 +58,18 @@ A special kind of event is created for compliance learning:
 
 ## Launch
 
-Use the following command to launch compliant policy training (supposed you have installed Isaac Sim 5.1):9
+Use the following command to launch compliant policy training (supposed you have installed Isaac Sim 5.1):
 
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
 
 ```
-python3 scripts/train.py --task=go2_compliant_locomotion --num_envs=4096 --max_iterations=5000 --headless
+python3 scripts/train.py --task=go2_compliant_stance --num_envs=4096 --max_iterations=5000 --headless
 ```
 
-To visualize in isaac sim:
+To visualize in IsaacSim:
 
 ```
-python3 scripts/play.py --task=go2_compliant_locomotion --num_envs=4
+python3 scripts/play.py --task=go2_compliant_stance --num_envs=4
 ```
 
 *One can use the following guiude to install the relevant version of IsaacSim: 
