@@ -151,7 +151,7 @@ def track_compliant_base_pos_cmd_exp(
     msd = env.compliance_manager._msd_system
     x_def_z = msd.state['x_def'][:, 2]  # Z deformation
     
-    max_def = 0.15 # 0.25
+    max_def = 0.3 # 0.25 # 0.15
     x_def_z = max_def * torch.tanh(x_def_z / max_def)
     
     # print("x_def_z", x_def_z)

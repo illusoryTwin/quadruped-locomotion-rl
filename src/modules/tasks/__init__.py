@@ -59,7 +59,8 @@ gym.register(
 
 gym.register(
     id="go2_compliant_stance",
-    entry_point="src.modules.envs.compliant_stability_rl_env:CompliantStabilityRLEnv",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    # entry_point="src.modules.envs.compliant_stability_rl_env:CompliantStabilityRLEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": "src.modules.tasks.compliant_stance_env_cfg:UnitreeGo2StanceEnvCfg",

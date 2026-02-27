@@ -22,6 +22,7 @@ from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
 from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
+from src.modules.commands.compliance_command import ComplianceCommandCfg
 from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact
 
 
@@ -75,17 +76,21 @@ class CommandsCfg:
         ranges=BasePositionCommandCfg.Ranges(
             x=(0.0, 0.0),
             y=(0.0, 0.0),
-            z=(0.32, 0.32),
+            z=(0.3, 0.3),
             # z=(0.25, 0.4),
             # z=(0.3, 0.38),
         ),
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)),
-
-        ranges=StiffnessCommandCfg.Ranges(kp=(70.0, 100.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(70.0, 100.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 170.0)),
+    )
+
+    compliance = ComplianceCommandCfg(
+        resampling_time_range=(1e9, 1e9),  # never resample
+        compliance_cfg=ComplianceManagerCfg(),
     )
 
 @configclass 
@@ -197,13 +202,14 @@ class EventCfg:
     # Apply sinusoidal forces to base body (Z only)
     compliance_push_z = EventTerm(
         func=apply_sinusoidal_forces_z,
-        mode="step",
+        mode="interval",
+        interval_range_s=(0.02, 0.02),  # fire every RL step (decimation * sim.dt = 4 * 0.005)
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
             "force_amplitude": [70.0],
             "frequency": 0.5,
         },
-    ) 
+    )
 
 
 
@@ -213,7 +219,7 @@ class RewardsCfg:
     track_compliant_pos = RewardTerm(
         func=track_compliant_base_pos_cmd_exp,
         weight=2.0,
-        params={"command_name": "base_position", "std": 0.04}, # 0.08},
+        params={"command_name": "base_position", "std": 0.04}, # 0.04}, # 0.08},
     )
 
     illegal_contact = RewardTerm(
@@ -265,13 +271,13 @@ class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg):
         events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
-        compliance: ComplianceManagerCfg = ComplianceManagerCfg(
-            enabled=True,
-            compliant_bodies={"base": 1.0},
-            dt=0.02,
-            base_stiffness=100.0,
-            base_inertia=0.5,
-        )
+        # compliance: ComplianceManagerCfg = ComplianceManagerCfg(
+        #     enabled=True,
+        #     compliant_bodies={"base": 1.0},
+        #     dt=0.02,
+        #     base_stiffness=100.0,
+        #     base_inertia=0.5,
+        # )
 
         def __post_init__(self):
             self.decimation = 4
