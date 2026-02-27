@@ -22,69 +22,7 @@ from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
 from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
-
-
-
-def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Observation term: base body Cartesian deformation."""
-    if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
-        msd = env.compliance_manager._msd_system
-        if msd is not None:
-            return msd.state['x_def'][:, 0:3]
-    return torch.zeros(env.num_envs, 3, device=env.device)
-
-
-def track_compliant_base_pos_cmd_exp(
-    env: ManagerBasedRLEnv,
-    command_name: str = "base_position",
-    std: float = 0.1,
-) -> torch.Tensor:
-    """Exponential height tracking reward: command_z + deformation_z.
-
-    z_ref = env_origin_z + pos_cmd_z + x_def_z
-    reward = exp(-(z_actual - z_ref)^2 / std^2)
-
-    The rigid reference (env_origin + pos_cmd) is independent of actual_pos,
-    so the reward signal is always meaningful for the policy.
-    """
-    if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    robot = env.scene["robot"]
-    pos_cmd = env.command_manager.get_command(command_name)  # [num_envs, 3]
-    # print("pos_cmd[:, 2]", pos_cmd[:, 2])
-    z_rigid = env.scene.env_origins[:, 2] + pos_cmd[:, 2]
-
-    msd = env.compliance_manager._msd_system
-    x_def_z = msd.state['x_def'][:, 2]  # Z deformation
-    
-    max_def = 0.15 # 0.25
-    x_def_z = max_def * torch.tanh(x_def_z / max_def)
-    
-    # print("x_def_z", x_def_z)
-    z_ref = z_rigid + x_def_z
-    
-    # print("z_rigid", z_rigid)
-    # print("robot.data.root_pos_w[:, 2]", robot.data.root_pos_w[:, 2][0])
-    # print("z_ref", z_ref)
-    z_err_sq = (robot.data.root_pos_w[:, 2] - z_ref).square()
-    return torch.exp(-z_err_sq / std**2)
-
-
-def feet_contact(
-    env: ManagerBasedRLEnv,
-    sensor_cfg: SceneEntityCfg,
-    threshold: float = 1.0,
-) -> torch.Tensor:
-    """Reward for keeping all feet in contact with the ground.
-
-    Returns the fraction of feet in contact (0 to 1).
-    """
-    contact_sensor = env.scene.sensors[sensor_cfg.name]
-    net_forces = contact_sensor.data.net_forces_w_history[:, 0, sensor_cfg.body_ids, :]
-    in_contact = net_forces.norm(dim=-1) > threshold  # [num_envs, num_feet]
-    return in_contact.float().mean(dim=1)
-
+from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact
 
 
 @configclass
@@ -278,16 +216,6 @@ class RewardsCfg:
         params={"command_name": "base_position", "std": 0.04}, # 0.08},
     )
 
-
-    # ============================
-    ## Additional rewards
-    # base_height = RewardTerm(
-    #     func=mdp.base_height_l2,
-    #     weight=-1.5,
-    #     params={"asset_cfg": SceneEntityCfg("robot"), 
-    #             "target_height": 0.3
-    #     },
-    # )
     illegal_contact = RewardTerm(
         func=mdp.illegal_contact,
         weight=-1.0,

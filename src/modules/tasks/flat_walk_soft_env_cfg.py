@@ -25,138 +25,7 @@ from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
 from src.modules.events import apply_sinusoidal_forces, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_z
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
-
-
-def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Observation term: base body Cartesian deformation from MSD. Shape [num_envs, 3]."""
-    if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
-        msd = env.compliance_manager._msd_system
-        if msd is not None:
-            return msd.state['x_def'][:, 0:3]
-    return torch.zeros(env.num_envs, 3, device=env.device)
-
-
-def track_compliant_base_height_exp(
-    env: ManagerBasedRLEnv,
-    target_height: float = 0.3,
-    std: float = 0.1,
-) -> torch.Tensor:
-    """Exponential height tracking reward for compliant base reference (Z only).
-
-    z_ref = env_origin_z + target_height + x_def_z
-
-    No forces  -> x_def_z ~ 0  -> robot stays at target_height
-    Push down  -> x_def_z < 0  -> robot yields below target_height
-    Push up    -> x_def_z > 0  -> robot extends above target_height
-
-    reward = exp(-(z_sim - z_ref)^2 / std^2)
-    """
-    if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    msd = env.compliance_manager._msd_system
-    x_def_z = msd.state['x_def'][:, 2]  # Z deformation from MSD
-
-    robot = env.scene["robot"]
-    z_ref = env.scene.env_origins[:, 2] + target_height + x_def_z
-    z_err_sq = (robot.data.root_pos_w[:, 2] - z_ref).square()
-
-    return torch.exp(-z_err_sq / std**2)
-
-
-def track_base_position_exp(
-    env: ManagerBasedRLEnv,
-    command_name: str = "base_position",
-    std: float = 0.1,
-) -> torch.Tensor:
-    """Reward for tracking the commanded base position.
-
-    reward = exp(-||pos_actual - (env_origin + pos_cmd)||^2 / std^2)
-    """
-    robot = env.scene["robot"]
-    pos_cmd = env.command_manager.get_command(command_name)
-    target_pos = env.scene.env_origins[:, :3] + pos_cmd
-    pos_err = (robot.data.root_pos_w[:, :3] - target_pos).square().sum(dim=1)
-    return torch.exp(-pos_err / std**2)
-
-
-def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Observation term: base body Cartesian deformation."""
-    if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
-        msd = env.compliance_manager._msd_system
-        if msd is not None:
-            return msd.state['x_def'][:, 0:3]
-    return torch.zeros(env.num_envs, 3, device=env.device)
-
-
-def track_compliant_base_pos_tanh(
-    env: ManagerBasedRLEnv,
-    pos_scale: float = 0.5,
-) -> torch.Tensor:
-    """Saturated position tracking penalty.
-
-    reward = -tanh(||x_sim - x_ref|| / pos_scale)
-
-    Gives gradient for small errors but saturates at -1 for large drift.
-    """
-    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    robot = env.scene["robot"]
-    pos_err = (robot.data.root_pos_w[:, :3] - env._compliant_ref_pos).norm(dim=1)
-
-    return -torch.tanh(pos_err / pos_scale)
-
-
-def track_compliant_base_pos_exp(
-    env: ManagerBasedRLEnv,
-    std: float = 0.25,
-) -> torch.Tensor:
-    """Exponential position tracking reward for compliant base reference.
-
-    reward = exp(-||x_sim - x_ref||^2 / std^2)
-
-    Returns 1.0 at zero error and decays toward 0 for large errors.
-    """
-    if not hasattr(env, '_compliant_ref_pos') or env._compliant_ref_pos is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    robot = env.scene["robot"]
-    pos_err_sq = (robot.data.root_pos_w[:, :3] - env._compliant_ref_pos).square().sum(dim=1)
-
-    return torch.exp(-pos_err_sq / std**2)
-
-
-def track_compliant_velocity_l2(
-    env: ManagerBasedRLEnv,
-) -> torch.Tensor:
-    """Penalty for deviating from compliant velocity reference.
-
-    vel_ref = commanded_velocity_world + MSD_deformation_velocity
-
-    When no external forces: dx_def ~ 0 -> tracks commanded velocity.
-
-    reward = -||v_sim - vel_ref||^2
-    """
-    if not hasattr(env, '_compliant_ref_vel') or env._compliant_ref_vel is None:
-        return torch.zeros(env.num_envs, device=env.device)
-
-    robot = env.scene["robot"]
-    vel_err = torch.sum((robot.data.root_lin_vel_w[:, :3] - env._compliant_ref_vel) ** 2, dim=1)
-
-    return -vel_err
-
-
-def feet_air_time(
-    env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
-) -> torch.Tensor:
-    """Reward long steps taken by the feet using L2-kernel."""
-    contact_sensor = env.scene.sensors[sensor_cfg.name]
-    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
-    last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
-    reward = torch.sum((last_air_time - threshold) * first_contact, dim=1)
-    reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
-    return reward
+from src.modules.rewards import track_compliant_base_height_exp, base_cartesian_deformation
 
 
 @configclass
@@ -359,17 +228,17 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    # -- task 
-    track_lin_vel_xy_exp = RewardTerm(
-        func=mdp.track_ang_vel_z_exp,
-        weight=0.5, # 0.2,
-        params={"command_name": "base_velocity", "std": 0.5}
-    )
-    track_ang_vel_z_exp = RewardTerm(
-        func=mdp.track_ang_vel_z_exp,
-        weight=0.25, # 0.1,
-        params={"command_name": "base_velocity", "std": 0.5}
-    )
+    # # -- task 
+    # track_lin_vel_xy_exp = RewardTerm(
+    #     func=mdp.track_ang_vel_z_exp,
+    #     weight=0.5, # 0.2,
+    #     params={"command_name": "base_velocity", "std": 0.5}
+    # )
+    # track_ang_vel_z_exp = RewardTerm(
+    #     func=mdp.track_ang_vel_z_exp,
+    #     weight=0.25, # 0.1,
+    #     params={"command_name": "base_velocity", "std": 0.5}
+    # )
     
     track_compliant_pos = RewardTerm(
         func=track_compliant_base_height_exp, # track_compliant_base_pos_exp,
