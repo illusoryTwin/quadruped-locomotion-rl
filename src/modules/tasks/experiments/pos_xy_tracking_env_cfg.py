@@ -83,11 +83,18 @@ class CommandsCfg:
         ranges=PositionCommandCfg.Ranges(
             # pos_x=(-0.5, 0.5),
             # pos_y=(-0.5, 0.5),
-            pos_x=(-1.0, 1.0),
-            pos_y=(-1.0, 1.0),
+            # pos_x=(-1.0, 1.0),
+            # pos_y=(-1.0, 1.0),
+            # pos_x=(-1.5, 1.5),
+            # pos_y=(-1.5, 1.5),
+            pos_x=(-2.0, 2.0),
+            pos_y=(-2.0, 2.0),
             vel=(-1.5, 1.5),
         ),
     )
+
+
+
 
 @configclass 
 class ActionsCfg:
@@ -190,6 +197,12 @@ class RewardsCfg:
         params={"target_height": 0.3},
     )
     flat_orientation_l2 = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    
+    # joint_default_pos = RewardTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.1,
+    #     params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
 
     # -- penalties
     dof_torques = RewardTerm(func=mdp.joint_torques_l2, weight=-1e-7)
@@ -219,7 +232,7 @@ class UnitreeGo2PosTrackingEnvCfg(LocomotionVelocityRoughEnvCfg):
         observations: ObservationsCfg = ObservationsCfg()
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
-        event: EventCfg = EventCfg()
+        events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
         def __post_init__(self):

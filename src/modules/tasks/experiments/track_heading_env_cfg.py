@@ -194,7 +194,7 @@ class UnitreeGo2OrientationEnvCfg(LocomotionVelocityRoughEnvCfg):
         observations: ObservationsCfg = ObservationsCfg()
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
-        event: EventCfg = EventCfg()
+        events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
         def __post_init__(self):

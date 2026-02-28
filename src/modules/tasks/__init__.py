@@ -90,3 +90,13 @@ gym.register(
         "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
     },
 )
+
+gym.register(
+    id="go2_soft_pos_xy_tracking",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "src.modules.tasks.experiments.soft_pos_xy_tracking_env_cfg:UnitreeGo2SoftPosTrackingEnvCfg",
+        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
+    },
+)

@@ -69,7 +69,14 @@ class ComplianceCommand(CommandTerm):
         self._env._deformations = self._deformations
 
     def _update_metrics(self):
-        pass
+        msd = self._compliance_manager._msd_system
+        if msd is None:
+            return
+        x_def = msd.state['x_def'][:, 0:3]
+        self.metrics["x_def_norm"] = x_def.norm(dim=1)
+        self.metrics["x_def_x"] = x_def[:, 0].abs()
+        self.metrics["x_def_y"] = x_def[:, 1].abs()
+        self.metrics["x_def_z"] = x_def[:, 2].abs()
 
 
 @configclass

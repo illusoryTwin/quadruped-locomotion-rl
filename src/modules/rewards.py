@@ -115,6 +115,58 @@ def track_compliant_velocity_l2(
     return -vel_err
 
 
+def track_compliant_lin_vel_xy_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_position",
+    std: float = 0.5,
+    max_def: float = 0.3,
+) -> torch.Tensor:
+    """Velocity tracking reward with XY compliance deformation.
+
+    Shifts the commanded target position by the MSD XY deformation,
+    recomputes the body-frame velocity command, and rewards tracking it.
+
+        target_xy  = pos_target_w + clamp(x_def_xy)
+        vel_target = clip(stiffness * rotate_to_body(target_xy - current_xy))
+        reward     = exp(-||vel_actual - vel_target||^2 / std^2)
+
+    Falls back to standard velocity tracking when compliance is unavailable.
+    """
+    pos_cmd_term = env.command_manager.get_term(command_name)
+    robot = env.scene["robot"]
+
+    # Start with the original target position (world frame XY)
+    target_xy = pos_cmd_term.pos_target_w.clone()
+
+    # Add clamped XY deformation from compliance MSD
+    if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
+        msd = env.compliance_manager._msd_system
+        x_def_xy = msd.state['x_def'][:, 0:2]
+        target_xy = target_xy + max_def * torch.tanh(x_def_xy / max_def)
+
+    # Position error in world frame
+    pos_error_w = target_xy - robot.data.root_pos_w[:, :2]
+
+    # Rotate to body frame
+    heading = robot.data.heading_w
+    cos_h = torch.cos(heading)
+    sin_h = torch.sin(heading)
+    error_body_x = cos_h * pos_error_w[:, 0] + sin_h * pos_error_w[:, 1]
+    error_body_y = -sin_h * pos_error_w[:, 0] + cos_h * pos_error_w[:, 1]
+
+    # P-controller with same gains as the position command
+    stiffness = pos_cmd_term.cfg.position_control_stiffness
+    vel_min, vel_max = pos_cmd_term.cfg.ranges.vel
+    vel_target_x = torch.clip(stiffness * error_body_x, min=vel_min, max=vel_max)
+    vel_target_y = torch.clip(stiffness * error_body_y, min=vel_min, max=vel_max)
+
+    # Velocity tracking error
+    vel_error = (robot.data.root_lin_vel_b[:, 0] - vel_target_x).square() + \
+                (robot.data.root_lin_vel_b[:, 1] - vel_target_y).square()
+
+    return torch.exp(-vel_error / std**2)
+
+
 def feet_air_time(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
 ) -> torch.Tensor:
