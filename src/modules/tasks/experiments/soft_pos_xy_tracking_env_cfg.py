@@ -197,7 +197,7 @@ class EventCfg:
     compliance_push_xy = EventTerm(
         func=apply_sinusoidal_forces_xy,
         mode="interval",
-        interval_range_s=(2.0, 6.0),  # fire every RL step (decimation * sim.dt = 4 * 0.005)
+        interval_range_s=(0.0, 7.0),  # fire every RL step (decimation * sim.dt = 4 * 0.005)
         # interval_range_s=(0.02, 0.02),  # fire every RL step (decimation * sim.dt = 4 * 0.005)
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
@@ -229,11 +229,11 @@ class RewardsCfg:
     )
     flat_orientation_l2 = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     
-    # joint_default_pos = RewardTerm(
-    #     func=mdp.joint_deviation_l1,
-    #     weight=-0.1,
-    #     params={"asset_cfg": SceneEntityCfg("robot")},
-    # )
+    joint_default_pos = RewardTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
 
     # -- penalties
     dof_torques = RewardTerm(func=mdp.joint_torques_l2, weight=-1e-7)

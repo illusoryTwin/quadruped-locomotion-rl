@@ -121,8 +121,7 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    reset_scene = mdp.reset_scene_to_default
-    reset_robot_joints = mdp.reset_joints_by_offset
+    reset_scene = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
