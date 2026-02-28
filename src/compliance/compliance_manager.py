@@ -65,6 +65,7 @@ class ComplianceManager:
         if self._msd_system is not None:
             self._msd_system.reset(env_ids)
 
+    # TODO: check, lokks like dead code
     def compute(self, base_stiffness: torch.Tensor | None = None) -> torch.Tensor:
         """Compute joint deformations from external forces.
 
@@ -90,20 +91,22 @@ class ComplianceManager:
         else:
             self._msd_system.update_msd_state_discrete(forces_flat)
 
-        # Get deformations for active DOFs
-        x_def = self._msd_system.state['x_def']
-        # x_def = x_def.reshape(num_envs, n_bodies, 3)
-        x_def_3d = x_def.reshape(self._num_envs, len(self._compliant_body_names), 3)
+        return self._msd_system.state['x_def']
+    
+        # # Get deformations for active DOFs
+        # x_def = self._msd_system.state['x_def']
+        # # x_def = x_def.reshape(num_envs, n_bodies, 3)
+        # x_def_3d = x_def.reshape(self._num_envs, len(self._compliant_body_names), 3)
 
-        J = get_jacobians(self._robot, body_names=self._compliant_body_names, joint_mask=self._joint_mask)[:, :, :3, :]
-        J_pinv = torch.linalg.pinv(J)
-        q_def = torch.einsum('ebnj,ebj->en', J_pinv, x_def_3d)
-        q_def = q_def[:, 6:] # drop 6 floating-base DOFs
-        q_def = q_def.clamp(-self.cfg.max_deformation, self.cfg.max_deformation)
+        # J = get_jacobians(self._robot, body_names=self._compliant_body_names, joint_mask=self._joint_mask)[:, :, :3, :]
+        # J_pinv = torch.linalg.pinv(J)
+        # q_def = torch.einsum('ebnj,ebj->en', J_pinv, x_def_3d)
+        # q_def = q_def[:, 6:] # drop 6 floating-base DOFs
+        # q_def = q_def.clamp(-self.cfg.max_deformation, self.cfg.max_deformation)
 
-        self._deformations = q_def
+        # self._deformations = q_def
 
-        if self.cfg.debug:
-            print(f"[ComplianceManager] Deformations: {q_def[0]}")
+        # if self.cfg.debug:
+        #     print(f"[ComplianceManager] Deformations: {q_def[0]}")
 
-        return q_def
+        # return q_def

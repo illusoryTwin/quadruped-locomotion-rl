@@ -67,3 +67,26 @@ gym.register(
         "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2SoftPPORunnerCfg",
     },
 ) 
+
+
+# ===========================
+
+gym.register(
+    id="go2_orientation_tracking",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "src.modules.tasks.experiments.track_heading_env_cfg:UnitreeGo2OrientationEnvCfg",
+        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="go2_pos_xy_tracking",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "src.modules.tasks.experiments.pos_xy_tracking_env_cfg:UnitreeGo2PosTrackingEnvCfg",
+        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
+    },
+)
