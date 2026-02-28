@@ -22,6 +22,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
 from src.modules.commands.heading_command import HeadingVelocityCommandCfg
+from src.modules.commands.position_command import PositionCommandCfg
 
 
 @configclass
@@ -61,19 +62,32 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
 
 @configclass 
 class CommandsCfg:
-    base_orientation = HeadingVelocityCommandCfg(
+    # base_orientation = HeadingVelocityCommandCfg(
+    #     asset_name="robot",
+    #     heading_command=True,
+    #     debug_vis=True,
+    #     resampling_time_range=(10.0, 10.0),
+    #     ranges=HeadingVelocityCommandCfg.Ranges(
+    #         lin_vel_x=(0.0, 0.0),
+    #         lin_vel_y=(0.0, 0.0),
+    #         ang_vel_z=(-1.5, 1.5),
+    #         heading=(-math.pi, math.pi),
+    #     ),
+    # )
+      
+    base_position = PositionCommandCfg(
         asset_name="robot",
-        heading_command=True,
+        position_control_stiffness=1.0,
         debug_vis=True,
         resampling_time_range=(10.0, 10.0),
-        ranges=HeadingVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 0.0),
-            lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(-1.5, 1.5),
-            heading=(-math.pi, math.pi),
+        ranges=PositionCommandCfg.Ranges(
+            # pos_x=(-0.5, 0.5),
+            # pos_y=(-0.5, 0.5),
+            pos_x=(-1.0, 1.0),
+            pos_y=(-1.0, 1.0),
+            vel=(-1.5, 1.5),
         ),
     )
-
 
 @configclass 
 class ActionsCfg:
@@ -102,9 +116,13 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
-        orientation_commands = ObsTerm(
+        # orientation_commands = ObsTerm(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "base_orientation"},
+        # )
+        position_commands = ObsTerm(
             func=mdp.generated_commands,
-            params={"command_name": "base_orientation"},
+            params={"command_name": "base_position"},
         )
 
         # Disable height_scan
@@ -153,10 +171,16 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     # -- task
-    track_ang_vel_z_exp = RewardTerm(
-        func=mdp.track_ang_vel_z_exp,
+    # track_ang_vel_z_exp = RewardTerm(
+    #     func=mdp.track_ang_vel_z_exp,
+    #     weight=1.5,
+    #     params={"command_name": "base_orientation", "std": math.sqrt(0.25)}
+    # )
+
+    track_lin_vel_xy_exp = RewardTerm(
+        func=mdp.track_lin_vel_xy_exp,
         weight=1.5,
-        params={"command_name": "base_orientation", "std": math.sqrt(0.25)}
+        params={"command_name": "base_position", "std": math.sqrt(0.25)},
     )
 
     # -- stance stability

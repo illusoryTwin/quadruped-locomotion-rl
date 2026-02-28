@@ -23,7 +23,6 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.envs import ManagerBasedRLEnv
 from src.modules.commands.heading_command import HeadingVelocityCommandCfg
 
-
 @configclass
 class RoughTerrainSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
