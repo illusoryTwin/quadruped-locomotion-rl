@@ -99,7 +99,8 @@ class CommandsCfg:
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(10.0, 30.0)), # track_lin_vel_xy_exp: 0.7795
+        # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)), # works 2026-03-01_09-20-21, 28.02
         # ranges=StiffnessCommandCfg.Ranges(kp=(70.0, 100.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 170.0)),
     )
@@ -229,11 +230,11 @@ class RewardsCfg:
     )
     flat_orientation_l2 = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     
-    joint_default_pos = RewardTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
+    # joint_default_pos = RewardTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.1,
+    #     params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
 
     # -- penalties
     dof_torques = RewardTerm(func=mdp.joint_torques_l2, weight=-1e-7)

@@ -83,7 +83,7 @@ class CommandsCfg:
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)), # last working version
         # ranges=StiffnessCommandCfg.Ranges(kp=(70.0, 100.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 170.0)),
     )
@@ -240,6 +240,7 @@ class RewardsCfg:
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
+
     dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) # -1e-7)
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7) # -2e-7)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) #-0.01)
