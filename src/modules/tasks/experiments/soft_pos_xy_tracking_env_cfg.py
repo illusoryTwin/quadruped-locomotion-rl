@@ -92,8 +92,10 @@ class CommandsCfg:
             # pos_y=(-1.0, 1.0),
             # pos_x=(-1.5, 1.5),
             # pos_y=(-1.5, 1.5),
-            pos_x=(-2.0, 2.0),
-            pos_y=(-2.0, 2.0),
+            # pos_x=(-2.0, 2.0),
+            # pos_y=(-2.0, 2.0),
+            pos_x=(-3.0, 3.0),
+            pos_y=(-3.0, 3.0),
             vel=(-1.5, 1.5),
         ),
     )
@@ -221,6 +223,8 @@ class RewardsCfg:
         weight=1.5,
         params={"command_name": "base_position", "std": math.sqrt(0.25)},
     )
+    
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.5) # -1.0) # -2.0
 
     # -- stance stability
     base_height_l2 = RewardTerm(

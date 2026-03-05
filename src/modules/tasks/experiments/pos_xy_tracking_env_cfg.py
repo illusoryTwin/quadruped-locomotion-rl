@@ -189,19 +189,26 @@ class RewardsCfg:
         params={"command_name": "base_position", "std": math.sqrt(0.25)},
     )
 
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-1.0) # -2.0)
+
     # -- stance stability
     base_height_l2 = RewardTerm(
         func=mdp.base_height_l2,
         weight=-1.0,
         params={"target_height": 0.3},
     )
-    flat_orientation_l2 = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     
-    # joint_default_pos = RewardTerm(
-    #     func=mdp.joint_deviation_l1,
-    #     weight=-0.1,
-    #     params={"asset_cfg": SceneEntityCfg("robot")},
-    # )
+    flat_orientation_l2 = RewardTerm(
+        func=mdp.flat_orientation_l2, 
+        weight=-1.0
+    )
+    
+    
+    joint_default_pos = RewardTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
 
     # -- penalties
     dof_torques = RewardTerm(func=mdp.joint_torques_l2, weight=-1e-7)
