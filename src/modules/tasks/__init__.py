@@ -5,7 +5,11 @@ from .flat_walk_soft_env_cfg import UnitreeGo2WalkSoftEnvCfg
 from .rough_walk_env_cfg import UnitreeGo2WalkRoughEnvCfg
 from .stairs_climbing_env_cfg import UnitreeGo2WalkStairsEnvCfg
 from .compliant_stance_env_cfg import UnitreeGo2StanceEnvCfg
-from src.algorithms.rsl_rl_ppo_cfg import UnitreeGo2PPORunnerCfg
+from src.algorithms.rsl_rl_ppo_cfg import (
+    UnitreeGo2PPORunnerCfg,
+    UnitreeGo2PosTrackingPPORunnerCfg,
+    UnitreeGo2SoftPosTrackingPPORunnerCfg,
+)
 
 gym.register(
     id="go2_walk_flat",
@@ -87,7 +91,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": "src.modules.tasks.experiments.pos_xy_tracking_env_cfg:UnitreeGo2PosTrackingEnvCfg",
-        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
+        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2PosTrackingPPORunnerCfg",
     },
 )
 
@@ -97,6 +101,6 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": "src.modules.tasks.experiments.soft_pos_xy_tracking_env_cfg:UnitreeGo2SoftPosTrackingEnvCfg",
-        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2PPORunnerCfg",
+        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2SoftPosTrackingPPORunnerCfg",
     },
 )

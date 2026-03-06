@@ -34,8 +34,8 @@ class UnitreeGo2PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     )
 
 
-@ configclass 
-class UnitreeGo2PPORunnerCfg(UnitreeGo2PPORunnerCfg):
+@ configclass
+class UnitreeGo2PPORunnerCfg2500(UnitreeGo2PPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
@@ -43,10 +43,28 @@ class UnitreeGo2PPORunnerCfg(UnitreeGo2PPORunnerCfg):
         self.max_iterations = 2500
 
 
-@ configclass 
+@ configclass
 class UnitreeGo2SoftPPORunnerCfg(UnitreeGo2PPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
         self.experiment_name = "unitree_go2_walk_soft"
+        self.max_iterations = 2500
+
+
+@configclass
+class UnitreeGo2PosTrackingPPORunnerCfg(UnitreeGo2PPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "go2_pos_xy_tracking"
+        self.max_iterations = 2500
+
+
+@configclass
+class UnitreeGo2SoftPosTrackingPPORunnerCfg(UnitreeGo2PPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "go2_soft_pos_xy_tracking"
         self.max_iterations = 2500

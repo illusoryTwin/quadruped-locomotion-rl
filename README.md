@@ -136,7 +136,23 @@ quadruped-locomotion-rl/
 
 ## Installation
 
-### Training Environment (Isaac Sim + Isaac Lab)
+### Option A: Docker (recommended)
+
+No local Isaac Sim installation needed. Requires only Docker and NVIDIA Container Toolkit.
+
+```bash
+cd docker
+docker compose build
+docker compose run quadruped-train
+```
+
+Source code is bind-mounted, so code changes apply immediately without rebuilding.
+
+Required sibling repos (relative to this repo's parent directory):
+- `../IsaacLab/`
+- `../unitree_robotics/unitree_rl_lab/`
+
+### Option B: Local (Isaac Sim + Isaac Lab)
 
 Follow the official installation guide:
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
@@ -152,28 +168,21 @@ https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installa
 
 ### Deployment Environment (MuJoCo)
 
+For deployment/testing see [quadruped-locomotion-deploy](https://github.com/illusoryTwin/quadruped-locomotion-deploy).
+
+Alternatively, set up locally:
+
 ```bash
-# Create conda environment
 conda create -n go2_deploy python=3.10 -y
 conda activate go2_deploy
-
-# Install PyTorch with CUDA
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-# Install other dependencies
 pip install mujoco pygame numpy pyyaml
 
-# Set path for external repos (customize to your preference)
 export UNITREE_MUJOCO_PATH=~/unitree_robotics/unitree_mujoco
-
-# Clone and install external repos
 mkdir -p $(dirname $UNITREE_MUJOCO_PATH)
 git clone https://github.com/unitreerobotics/unitree_mujoco $UNITREE_MUJOCO_PATH
 git clone https://github.com/unitreerobotics/unitree_sdk2_python $(dirname $UNITREE_MUJOCO_PATH)/unitree_sdk2_python
 pip install -e $(dirname $UNITREE_MUJOCO_PATH)/unitree_sdk2_python
-
-# Add to shell config for persistence
-echo "export UNITREE_MUJOCO_PATH=$UNITREE_MUJOCO_PATH" >> ~/.bashrc
 ```
 
 ## Training
