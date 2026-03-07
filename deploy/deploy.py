@@ -139,12 +139,95 @@ class Go2PolicyDeployer:
             time.sleep(0.01)
         print("[INFO] Robot state received!")
 
-        # Initialize history buffers with first real observation
+        # Smoothly move to default standing pose before running the policy
+        self._go_to_default_pose()
+
+        # Initialize history buffers with first real observation (now at default pose)
         self._init_history_from_state()
 
     def _state_callback(self, msg: LowState_):
         self.state = msg
         self.state_received = True
+
+    def _go_to_default_pose(self, duration: float = 3.0, hold: float = 2.0):
+        """Smoothly interpolate from current pose to default standing pose.
+
+        This is critical for MuJoCo deployment: the simulator starts with all
+        joints at 0 (straight legs), which is far from the training default.
+        Without this step, the policy receives out-of-distribution observations
+        and produces extreme actions.
+        """
+        # Read current joint positions (SDK order) → convert to Isaac order
+        sdk_pos = np.array(
+            [self.state.motor_state[i].q for i in range(12)], dtype=np.float32
+        )
+        start_pos_isaac = sdk_pos[self.ISAAC_TO_SDK]
+
+        n_steps = int(duration / self.control_dt)
+        print(f"[INFO] Moving to default pose ({duration:.1f}s)...")
+
+        for i in range(n_steps):
+            t = (i + 1) / n_steps
+            target_isaac = start_pos_isaac + t * (self.DEFAULT_POS_ISAAC - start_pos_isaac)
+            target_sdk = target_isaac[self.SDK_TO_ISAAC]
+
+            cmd = unitree_go_msg_dds__LowCmd_()
+            cmd.head[0] = 0xFE
+            cmd.head[1] = 0xEF
+            cmd.level_flag = 0xFF
+            cmd.gpio = 0
+
+            for j in range(20):
+                cmd.motor_cmd[j].mode = 0x01
+                cmd.motor_cmd[j].q = 0.0
+                cmd.motor_cmd[j].kp = 0.0
+                cmd.motor_cmd[j].dq = 0.0
+                cmd.motor_cmd[j].kd = 0.0
+                cmd.motor_cmd[j].tau = 0.0
+
+            for j in range(12):
+                cmd.motor_cmd[j].q = float(target_sdk[j])
+                cmd.motor_cmd[j].kp = float(self.kp[j])
+                cmd.motor_cmd[j].dq = 0.0
+                cmd.motor_cmd[j].kd = float(self.kd[j])
+                cmd.motor_cmd[j].tau = 0.0
+
+            cmd.crc = self.crc.Crc(cmd)
+            self.cmd_pub.Write(cmd)
+            time.sleep(self.control_dt)
+
+        # Hold default pose
+        n_hold = int(hold / self.control_dt)
+        print(f"[INFO] Holding default pose ({hold:.1f}s)...")
+        target_sdk = self.DEFAULT_POS_ISAAC[self.SDK_TO_ISAAC]
+
+        for _ in range(n_hold):
+            cmd = unitree_go_msg_dds__LowCmd_()
+            cmd.head[0] = 0xFE
+            cmd.head[1] = 0xEF
+            cmd.level_flag = 0xFF
+            cmd.gpio = 0
+
+            for j in range(20):
+                cmd.motor_cmd[j].mode = 0x01
+                cmd.motor_cmd[j].q = 0.0
+                cmd.motor_cmd[j].kp = 0.0
+                cmd.motor_cmd[j].dq = 0.0
+                cmd.motor_cmd[j].kd = 0.0
+                cmd.motor_cmd[j].tau = 0.0
+
+            for j in range(12):
+                cmd.motor_cmd[j].q = float(target_sdk[j])
+                cmd.motor_cmd[j].kp = float(self.kp[j])
+                cmd.motor_cmd[j].dq = 0.0
+                cmd.motor_cmd[j].kd = float(self.kd[j])
+                cmd.motor_cmd[j].tau = 0.0
+
+            cmd.crc = self.crc.Crc(cmd)
+            self.cmd_pub.Write(cmd)
+            time.sleep(self.control_dt)
+
+        print("[INFO] Default pose reached!")
 
     def _read_term_value(self, term: dict) -> np.ndarray:
         """Read a single observation term's current value."""
