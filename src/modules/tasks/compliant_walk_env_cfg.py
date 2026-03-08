@@ -201,7 +201,7 @@ class RewardsCfg:
     # Compliant position tracking (XYZ) — command + MSD deformation
     track_lin_vel_xy_exp = RewardTerm(
         func=mdp.track_lin_vel_xy_exp, 
-        weight=1.0, # 1.5, 
+        weight=1.5, # 1.0, # 1.5, 
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
     track_ang_vel_z_exp = RewardTerm(
@@ -211,11 +211,12 @@ class RewardsCfg:
     )
     track_compliant_pos = RewardTerm(
         func=track_compliant_base_pos_cmd_exp,
-        weight=2.5, # 2.0,
-        params={"command_name": "base_position", "std": 0.04}, # 0.04}, # 0.08},
+        weight=2.5,
+        params={"command_name": "base_position", "std": 0.04},
     )
 
-    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.075) # -0.05)
+    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.075)
 
     illegal_contact = RewardTerm(
         func=mdp.illegal_contact,
@@ -235,11 +236,16 @@ class RewardsCfg:
         weight=-0.075, # -0.1,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
-    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) # -1e-7)
-    dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7) # -2e-7)
-    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) #-0.01)
-    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.2) # -0.15) #-0.01)
-
+    # # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-5e-7) # -1e-7)
+    # # # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) # -1e-7)
+    # # # dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-1e-6)
+    # # dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7) # -1e-6)
+    # # # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) #-0.01)
+    # # # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.2) # -0.15) #-0.01)
+    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.5) # -0.25) # -0.15) #-0.01)
+    # # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.3) # -0.25) # -0.15) #-0.01)
+    # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-5e-7)
+    dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7) # -5e-7
 
 @configclass 
 class TerminationsCfg:
