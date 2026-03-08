@@ -21,7 +21,6 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
-from src.modules.commands.heading_command import HeadingVelocityCommandCfg
 from src.modules.commands.position_command import PositionCommandCfg
 
 
@@ -79,7 +78,8 @@ class CommandsCfg:
         asset_name="robot",
         position_control_stiffness=1.0,
         debug_vis=True,
-        resampling_time_range=(10.0, 10.0),
+        resampling_time_range=(3.0, 7.0),
+        # resampling_time_range=(10.0, 10.0),
         ranges=PositionCommandCfg.Ranges(
             # pos_x=(-0.5, 0.5),
             # pos_y=(-0.5, 0.5),
@@ -90,6 +90,17 @@ class CommandsCfg:
             pos_x=(-2.0, 2.0),
             pos_y=(-2.0, 2.0),
             vel=(-1.5, 1.5),
+        ),
+    )
+
+    base_velocity = mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        ranges=mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(0.0, 0.0),   # disabled — handled by position command
+            lin_vel_y=(0.0, 0.0),   # disabled
+            ang_vel_z=(-1.5, 1.5),  # yaw rotation
+            heading=(-math.pi, math.pi),
         ),
     )
 
@@ -127,6 +138,10 @@ class ObservationsCfg:
         #     func=mdp.generated_commands,
         #     params={"command_name": "base_orientation"},
         # )
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+        )
         position_commands = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "base_position"},
@@ -189,7 +204,13 @@ class RewardsCfg:
         params={"command_name": "base_position", "std": math.sqrt(0.25)},
     )
 
-    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-1.0) # -2.0)
+    track_ang_vel_z_exp = RewardTerm(
+        func=mdp.track_ang_vel_z_exp, 
+        weight=0.75, 
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    )
+
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.5) #-1.0) # -2.0)
 
     # -- stance stability
     base_height_l2 = RewardTerm(

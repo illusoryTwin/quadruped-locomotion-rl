@@ -19,6 +19,10 @@ go2_soft_pos_xy_tracking:
   experiment_name: go2_soft_pos_xy_tracking
   deploy_config: soft_pos_xy_tracking
 
+go2_soft_walk:
+  experiment_name: unitree_go2_walk_soft
+  deploy_config: soft_walk
+
 go2_orientation_tracking:
   experiment_name: go2_orientation_tracking
   deploy_config: orientation_tracking

@@ -184,7 +184,7 @@ class RewardsCfg:
     # Compliant position tracking (XYZ) — command + MSD deformation
     track_compliant_pos = RewardTerm(
         func=track_compliant_base_pos_cmd_exp,
-        weight=2.0,
+        weight=2.5, # 2.0,
         params={"command_name": "base_position", "std": 0.04}, # 0.04}, # 0.08},
     )
 
@@ -205,7 +205,7 @@ class RewardsCfg:
     flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
     joint_default_pos = RewardTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.15, # -0.075, # -0.1,
+        weight=-0.075, # -0.1,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
     dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) # -1e-7)
