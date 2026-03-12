@@ -83,8 +83,16 @@ class CommandsCfg:
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        # ranges=StiffnessCommandCfg.Ranges(kp=(200.0, 200.0)),
-        ranges=StiffnessCommandCfg.Ranges(kp=(140.0, 140.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(160.0, 160.0)),
+
+        # ranges=StiffnessCommandCfg.Ranges(kp=(150.0, 150.0)), # 3 not bad with 30 & 50 N
+
+        # ranges=StiffnessCommandCfg.Ranges(kp=(120.0, 120.0)), # jumping
+        # ranges=StiffnessCommandCfg.Ranges(kp=(160.0, 160.0)), # non stable
+
+        # ranges=StiffnessCommandCfg.Ranges(kp=(140.0, 140.0)), # good 0
+        # ranges=StiffnessCommandCfg.Ranges(kp=(150.0, 150.0)), # not bad 1
+
         # ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 50.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)),
     )
@@ -173,8 +181,9 @@ class EventCfg:
         interval_range_s=(5.0, 5.5),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [10.0], # [100.0],
-            # "force_amplitude": [50.0],
+            "force_amplitude": [50.0],
+            # "force_amplitude": [30.0],
+            # "force_amplitude": [10.0], # [100.0],
             "frequency": 0.5,
         },
     )
