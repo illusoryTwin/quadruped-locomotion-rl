@@ -77,6 +77,7 @@ class ComplianceCommand(CommandTerm):
         self.metrics["x_def_x"] = x_def[:, 0].abs()
         self.metrics["x_def_y"] = x_def[:, 1].abs()
         self.metrics["x_def_z"] = x_def[:, 2].abs()
+        self.metrics["x_def_z_env0"] = torch.full_like(x_def[:, 2], x_def[0, 2].item())
 
 
 @configclass

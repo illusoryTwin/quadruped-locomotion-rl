@@ -1,7 +1,19 @@
 import torch
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.assets import Articulation
+from isaaclab.assets import Articulation, RigidObject
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
+
+
+def ang_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize z-axis base angular velocity using L2 squared kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.square(asset.data.root_ang_vel_b[:, 2])
+
+
+def lin_vel_xy_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize xy-axis base linear velocity using L2 squared kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.sum(torch.square(asset.data.root_lin_vel_b[:, :2]), dim=1)
 
 
 def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -203,8 +215,8 @@ def track_compliant_base_pos_cmd_exp(
     msd = env.compliance_manager._msd_system
     x_def_z = msd.state['x_def'][:, 2]  # Z deformation
     
-    max_def = 0.3 # prev value # 0.25 # 0.15
-    x_def_z = max_def * torch.tanh(x_def_z / max_def)
+    # max_def = 0.2 # 0.3 # usually trained with this value # prev value # 0.25 # 0.15
+    # x_def_z = max_def * torch.tanh(x_def_z / max_def)
     
     # print("x_def_z", x_def_z)
     z_ref = z_rigid + x_def_z

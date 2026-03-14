@@ -186,6 +186,42 @@ def apply_sinusoidal_forces(
     )
 
 
+def apply_constant_force_z(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    force_z: float = -70.0,
+):
+    """Apply a constant downward force on the Z axis to specified bodies.
+
+    Args:
+        env: The environment instance.
+        env_ids: Environment indices.
+        asset_cfg: Asset and body configuration.
+        force_z: Constant force in Newtons along Z axis.
+            Negative = downward (default -70.0 N).
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
+
+    forces = torch.zeros(num_envs, num_bodies, 3, device=device)
+    forces[:, :, 2] = force_z
+    torques = torch.zeros_like(forces)
+    # print("forces", forces)
+
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )
+
+
 def apply_sinusoidal_forces_z(
     env,
     env_ids: torch.Tensor,
@@ -215,16 +251,6 @@ def apply_sinusoidal_forces_z(
     if not hasattr(env, "_duty_cycle_z_offset"):
         env._duty_cycle_z_offset = torch.rand(num_envs, device=device) * cycle_period
 
-    # Re-randomize for reset envs
-    reset_ids = (env.episode_length_buf == 0).nonzero(as_tuple=False).flatten()
-    if len(reset_ids) > 0:
-        env._sin_force_z_phases[reset_ids] = torch.rand(
-            (len(reset_ids), num_bodies), device=device
-        ) * 2 * torch.pi
-        env._duty_cycle_z_offset[reset_ids] = torch.rand(
-            len(reset_ids), device=device
-        ) * cycle_period
-
     t = env.common_step_counter * env.step_dt
 
     cycle_time = (t + env._duty_cycle_z_offset) % cycle_period
@@ -244,6 +270,7 @@ def apply_sinusoidal_forces_z(
     forces = torch.zeros(num_envs, num_bodies, 3, device=device)
     forces[:, :, 2] = fz
     torques = torch.zeros_like(forces)
+    # print(forces)
 
     asset.set_external_force_and_torque(
         forces,

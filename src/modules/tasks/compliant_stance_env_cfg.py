@@ -16,14 +16,17 @@ from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
+import isaaclab.envs.mdp as mdp_curr
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
 from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
+from src.modules.curriculums import ramp_force_amplitude
 
 
 @configclass
@@ -83,14 +86,21 @@ class CommandsCfg:
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(160.0, 160.0)),
-
+        ranges=StiffnessCommandCfg.Ranges(kp=(350.0, 350.0)), # 300.0, 300.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(190.0, 190.0)), # still works with 70 N and even 90 N, but not compliant enough
+        
+        # ranges=StiffnessCommandCfg.Ranges(kp=(200.0, 200.0)), # not so good, slides away under 50 N
+        # ranges=StiffnessCommandCfg.Ranges(kp=(190.0, 190.0)), # also ok
+        # ranges=StiffnessCommandCfg.Ranges(kp=(180.0, 180.0)), # also works with 50 N
+        # ranges=StiffnessCommandCfg.Ranges(kp=(170.0, 170.0)), # also works with 50 N
+        # ranges=StiffnessCommandCfg.Ranges(kp=(160.0, 160.0)), # more or less good on 50 N
         # ranges=StiffnessCommandCfg.Ranges(kp=(150.0, 150.0)), # 3 not bad with 30 & 50 N
+        # ranges=StiffnessCommandCfg.Ranges(kp=(140.0, 140.0)), # good 0
+        # =============
 
         # ranges=StiffnessCommandCfg.Ranges(kp=(120.0, 120.0)), # jumping
         # ranges=StiffnessCommandCfg.Ranges(kp=(160.0, 160.0)), # non stable
 
-        # ranges=StiffnessCommandCfg.Ranges(kp=(140.0, 140.0)), # good 0
         # ranges=StiffnessCommandCfg.Ranges(kp=(150.0, 150.0)), # not bad 1
 
         # ranges=StiffnessCommandCfg.Ranges(kp=(50.0, 50.0)),
@@ -134,7 +144,8 @@ class ObservationsCfg:
         )
         stiffness_commands = ObsTerm(
             func=mdp.generated_commands,
-            params={"command_name": "stiffness"}
+            params={"command_name": "stiffness"},
+            scale=0.01,
         )
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
 
@@ -173,22 +184,31 @@ class EventCfg:
             "velocity_range": (-0.5, 0.5),
         }
     )
-    # Z-only sinusoidal force on base, resampled every 5-5.5s
+    # Z-only sinusoidal force on base, applied every step for smooth sinusoid
     compliance_push = EventTerm(
         func=apply_sinusoidal_forces_z,
         mode="interval",
-        # interval_range_s=(0.0, 5.5),
-        interval_range_s=(5.0, 5.5),
+        interval_range_s=(0.02, 0.02),  # every RL step
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [50.0],
+            "force_amplitude": [70.0], # [50.0],
             # "force_amplitude": [30.0],
             # "force_amplitude": [10.0], # [100.0],
             "frequency": 0.5,
+            "on_duration": 1e6,  # effectively no off phase
+            "off_duration": 0.0,
         },
     )
 
-
+    # compliance_payload = EventTerm(
+    #     func=apply_constant_force_z,
+    #     mode="interval",
+    #     interval_range_s=(0.5, 5.0),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_z": -20.0, # -70.0,
+    #     },
+    # )
 
 @configclass
 class RewardsCfg:
@@ -241,9 +261,23 @@ class TerminationsCfg:
     )
 
 
-@configclass 
+@configclass
 class CurriculumCfg:
-    pass 
+    # Iter 0–700: no forces (learn to stand), then linear ramp to 70 N by iter 2500
+    # num_steps_per_env = 24 → warmup = 700*24 = 16800, ramp = 1800*24 = 43200
+    force_amplitude = CurrTerm(
+        func=mdp_curr.modify_term_cfg,
+        params={
+            "address": "events.compliance_push.params.force_amplitude",
+            "modify_fn": ramp_force_amplitude,
+            "modify_params": {
+                "initial": 0.0,
+                "final": 70.0,
+                "warmup_steps": 16800,
+                "ramp_steps": 43200,
+            },
+        },
+    )
 
 
 @configclass
