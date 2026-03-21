@@ -62,6 +62,15 @@ class UnitreeGo2SoftStancePPORunnerCfg(UnitreeGo2PPORunnerCfg):
 
 
 @ configclass
+class UnitreeGo2FixedStiffnessStancePPORunnerCfg(UnitreeGo2PPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "unitree_go2_stance_fixed_stiffness"
+        self.max_iterations = 2500
+
+
+@ configclass
 class UnitreeGo2SoftWalkPPORunnerCfg(UnitreeGo2PPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()

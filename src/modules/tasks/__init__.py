@@ -5,6 +5,7 @@ from .flat_walk_soft_env_cfg import UnitreeGo2WalkSoftEnvCfg
 from .rough_walk_env_cfg import UnitreeGo2WalkRoughEnvCfg
 from .stairs_climbing_env_cfg import UnitreeGo2WalkStairsEnvCfg
 from .compliant_stance_env_cfg import UnitreeGo2StanceEnvCfg
+from .compliant_stance_fixed_stiffness_env_cfg import UnitreeGo2StanceFixedStiffnessEnvCfg
 from src.algorithms.rsl_rl_ppo_cfg import (
     UnitreeGo2PPORunnerCfg,
     UnitreeGo2OrientationPPORunnerCfg,
@@ -73,6 +74,16 @@ gym.register(
     },
 ) 
 
+
+gym.register(
+    id="go2_compliant_stance_fixed_stiffness",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": "src.modules.tasks.compliant_stance_fixed_stiffness_env_cfg:UnitreeGo2StanceFixedStiffnessEnvCfg",
+        "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2FixedStiffnessStancePPORunnerCfg",
+    },
+)
 
 gym.register(
     id="go2_default_stance",
