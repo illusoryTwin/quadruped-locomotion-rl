@@ -21,6 +21,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
+from src.modules.rewards import feet_air_time
 
 
 @configclass
@@ -162,21 +163,46 @@ class RewardsCfg:
     # -- penalties
     # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
+    # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
     # dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
+    
+    illegal_contact = RewardTerm(
+        func=mdp.illegal_contact,
+        weight=-1.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base", ".*_thigh"]),
+                "threshold": 1.0},
+    )
 
-    dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
+    flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
+    joint_default_pos = RewardTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.01, # -0.05, # -0.08, # -0.1, # -0.075, 
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
+
+    dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
+    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-5) #-1e-7)
+    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) # -0.01)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
-    # feet_air_time = RewardTerm(
-    #     func=feet_air_time,
-    #     weight=0.25,
+
+    feet_air_time = RewardTerm(
+        func=feet_air_time,
+        weight=0.25, # 0.125, # 0.25,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "command_name": "base_velocity",
+            "threshold": 0.5,
+        },
+    )
+    # feet_air_time = RewTerm(
+    #     func=mdp.feet_air_time,
+    #     weight=0.125,
     #     params={
     #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
     #         "command_name": "base_velocity",
     #         "threshold": 0.5,
     #     },
     # )
-
 
 @configclass
 class TerminationsCfg:

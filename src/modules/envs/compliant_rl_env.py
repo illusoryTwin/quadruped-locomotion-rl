@@ -170,6 +170,7 @@ class CompliantRLEnv(ManagerBasedRLEnv):
             self.extras["log"]["compliance/x_def_x"] = x_def_base[:, 0].abs().mean().item()
             self.extras["log"]["compliance/x_def_y"] = x_def_base[:, 1].abs().mean().item()
             self.extras["log"]["compliance/x_def_z"] = x_def_base[:, 2].abs().mean().item()
+            self.extras["log"]["compliance/x_def_z_env0"] = x_def_base[0, 2].item()
 
         # --- Cartesian tracking errors ---
         if self._compliant_ref_pos is not None:

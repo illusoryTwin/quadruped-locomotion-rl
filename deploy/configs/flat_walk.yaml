@@ -1,0 +1,19 @@
+# Deploy config for go2_walk_flat (flat_walk_env_cfg)
+# Observation: 45 dims/frame x 10 history = 450 total
+#
+# velocity_commands: 3D [lin_vel_x, lin_vel_y, ang_vel_z]
+#   [0.5, 0, 0] = walk forward at 0.5 m/s
+
+observation_terms:
+  - {name: base_ang_vel, dim: 3, source: imu_gyroscope}
+  - {name: projected_gravity, dim: 3, source: imu_gravity}
+  - {name: joint_pos, dim: 12, source: joint_pos_rel}
+  - {name: joint_vel, dim: 12, source: joint_vel}
+  - {name: actions, dim: 12, source: last_action}
+  - {name: velocity_commands, dim: 3, source: command, default: [1.0, 0.0, 0.0]}
+
+history_length: 10
+action_scale: 0.5
+control_dt: 0.02
+kp: 25.0
+kd: 0.5

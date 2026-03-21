@@ -7,6 +7,10 @@ go2_compliant_stance:
   experiment_name: unitree_go2_stance_soft
   deploy_config: compliant_stance
 
+go2_compliant_stance_fixed_stiffness:
+  experiment_name: unitree_go2_stance_fixed_stiffness
+  deploy_config: compliant_stance
+
 go2_default_stance:
   experiment_name: unitree_go2_stance_default
   deploy_config: default_stance
@@ -22,6 +26,10 @@ go2_soft_pos_xy_tracking:
 go2_soft_walk:
   experiment_name: unitree_go2_walk_soft
   deploy_config: soft_walk
+
+go2_walk_flat:
+  experiment_name: unitree_go2_walk
+  deploy_config: flat_walk
 
 go2_orientation_tracking:
   experiment_name: go2_orientation_tracking

@@ -21,12 +21,12 @@ import isaaclab.envs.mdp as mdp_curr
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z, log_env0_compliance
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
 from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
-from src.modules.curriculums import ramp_force_amplitude
+from src.modules.curriculums import staged_force_ramp, multi_stage_stiffness
 
 
 @configclass
@@ -86,7 +86,14 @@ class CommandsCfg:
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(350.0, 350.0)), # 300.0, 300.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(410.0, 410.0)), # also good # 300.0, 300.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(350.0, 700.0)), # also good # 300.0, 300.0)),
+
+        # ranges=StiffnessCommandCfg.Ranges(kp=(330.0, 330.0)), # 300.0, 300.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(350.0, 350.0)), # 300.0, 300.0)), 3 good 
+
+
+
         # ranges=StiffnessCommandCfg.Ranges(kp=(190.0, 190.0)), # still works with 70 N and even 90 N, but not compliant enough
         
         # ranges=StiffnessCommandCfg.Ranges(kp=(200.0, 200.0)), # not so good, slides away under 50 N
@@ -200,6 +207,16 @@ class EventCfg:
         },
     )
 
+    # Log env[0] force & deformation every step
+    env0_logger = EventTerm(
+        func=log_env0_compliance,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "log_path": "env0_compliance_log.csv",
+        },
+    )
+
     # compliance_payload = EventTerm(
     #     func=apply_constant_force_z,
     #     mode="interval",
@@ -263,18 +280,32 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    # Iter 0–700: no forces (learn to stand), then linear ramp to 70 N by iter 2500
-    # num_steps_per_env = 24 → warmup = 700*24 = 16800, ramp = 1800*24 = 43200
+    # 5 stages × 1000 iters = 5000 iters, steps_per_stage = 1000 × 24 = 24000
+    # Stage 1 (0-1000): kp=700, 0→70N
+    # Stage 2 (1000-2000): kp=600, 0→70N
+    # Stage 3 (2000-3000): kp=500, 0→70N
+    # Stage 4 (3000-4000): kp=400, 0→70N
+    # Stage 5 (4000-5000): kp=350, 0→70N
     force_amplitude = CurrTerm(
         func=mdp_curr.modify_term_cfg,
         params={
             "address": "events.compliance_push.params.force_amplitude",
-            "modify_fn": ramp_force_amplitude,
+            "modify_fn": staged_force_ramp,
             "modify_params": {
-                "initial": 0.0,
-                "final": 70.0,
-                "warmup_steps": 16800,
-                "ramp_steps": 43200,
+                "stages": [(0.0, 70.0), (0.0, 70.0), (0.0, 70.0), (0.0, 70.0), (0.0, 70.0)],
+                "steps_per_stage": 24000,  # 1000 iters × 24 steps
+            },
+        },
+    )
+
+    stiffness_range = CurrTerm(
+        func=mdp_curr.modify_term_cfg,
+        params={
+            "address": "commands.stiffness.ranges.kp",
+            "modify_fn": multi_stage_stiffness,
+            "modify_params": {
+                "stages": [700.0, 600.0, 500.0, 400.0, 350.0],
+                "steps_per_stage": 24000,  # 1000 iters × 24 steps
             },
         },
     )

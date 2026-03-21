@@ -12,7 +12,7 @@ observation_terms:
   - {name: actions, dim: 12, source: last_action}
   - {name: projected_gravity, dim: 3, source: imu_gravity}
   - {name: position_commands, dim: 3, source: command, default: [0.0, 0.0, 0.3]}
-  - {name: stiffness_commands, dim: 1, source: command, default: [40.0]}
+  - {name: stiffness_commands, dim: 1, source: command, default: [400.0]}
   - {name: velocity_commands, dim: 3, source: command, default: [0.5, 0.0, 0.0]}
   - {name: base_ang_vel, dim: 3, source: imu_gyroscope}
 

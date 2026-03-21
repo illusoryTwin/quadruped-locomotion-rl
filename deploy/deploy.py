@@ -272,6 +272,9 @@ class Go2PolicyDeployer:
         self.term_histories = {}
         for term in self.obs_terms:
             value = self._read_term_value(term)
+            scale = term.get("scale", 1.0)
+            if scale != 1.0:
+                value = value * scale
             buf = deque(maxlen=self.history_length)
             for _ in range(self.history_length):
                 buf.append(value.copy())
@@ -287,6 +290,10 @@ class Go2PolicyDeployer:
         for term in self.obs_terms:
             name = term["name"]
             value = self._read_term_value(term)
+            # Apply per-term scaling (matches training ObsTerm scale parameter)
+            scale = term.get("scale", 1.0)
+            if scale != 1.0:
+                value = value * scale
             self.term_histories[name].append(value)
             term_hist = np.concatenate(list(self.term_histories[name]))
             obs_parts.append(term_hist)

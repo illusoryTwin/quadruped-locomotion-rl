@@ -27,6 +27,19 @@ from src.modules.commands.compliance_command import ComplianceCommandCfg
 from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact
 from src.modules.actions import EMAJointPositionActionCfg
 
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
+import isaaclab.envs.mdp as mdp_curr
+from src.modules.curriculums import ramp_force_amplitude
+
+from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
+from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z, log_env0_compliance
+from src.modules.commands.stiffness_command import StiffnessCommandCfg
+from src.modules.commands.base_position_command import BasePositionCommandCfg
+from src.modules.commands.compliance_command import ComplianceCommandCfg
+from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
+from src.modules.curriculums import staged_force_ramp, multi_stage_stiffness
+
 
 @configclass
 class RoughTerrainSceneCfg(InteractiveSceneCfg):
@@ -97,9 +110,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 50.0)),
-        # ranges=StiffnessCommandCfg.Ranges(kp=(70.0, 100.0)),
-        # ranges=StiffnessCommandCfg.Ranges(kp=(30.0, 170.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(400.0, 400.0)), # 30.0, 50.0)),
     )
 
     compliance = ComplianceCommandCfg(
@@ -186,10 +197,11 @@ class EventCfg:
     compliance_push = EventTerm(
         func=apply_sinusoidal_forces_z,
         mode="interval",
-        interval_range_s=(5.0, 5.5),
+        interval_range_s=(0.02, 0.02),
+        # interval_range_s=(5.0, 5.5),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [100.0],
+            "force_amplitude": [70.0], # [100.0],
             # "force_amplitude": [50.0],
             # "frequency": 0.3,
             "frequency": 0.5,
@@ -262,9 +274,24 @@ class TerminationsCfg:
     )
 
 
-@configclass 
+@configclass
 class CurriculumCfg:
-    pass 
+    # Simple force ramp: 0 N for first 1000 iters, then linearly 0→70 N over next 1000 iters
+    # warmup_steps = 1000 iters × 24 steps/iter = 24000
+    # ramp_steps   = 1000 iters × 24 steps/iter = 24000
+    force_amplitude = CurrTerm(
+        func=mdp_curr.modify_term_cfg,
+        params={
+            "address": "events.compliance_push.params.force_amplitude",
+            "modify_fn": ramp_force_amplitude,
+            "modify_params": {
+                "initial": 0.0,
+                "final": 70.0,
+                "warmup_steps": 24000,   # 1000 iters × 24 steps
+                "ramp_steps": 24000,     # 1000 iters × 24 steps
+            },
+        },
+    )
 
 
 @configclass

@@ -270,10 +270,147 @@ def apply_sinusoidal_forces_z(
     forces = torch.zeros(num_envs, num_bodies, 3, device=device)
     forces[:, :, 2] = fz
     torques = torch.zeros_like(forces)
-    # print(forces)
+    
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )
+
+    # Store for external logging
+    env._compliance_push_fz = fz
+
+
+def apply_sinusoidal_forces_z_new(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    force_amplitude: float | list[float] = 10.0,
+    frequency_range: tuple[float, float] = (0.1, 0.5),
+    on_duration: float = 2.0,
+    off_duration: float = 1.0,
+    resample_time: float = 10.0,
+):
+    """Apply sinusoidal forces on Z axis only.
+
+    Compared to apply_sinusoidal_forces_z:
+      - Per-env episode time (resets on env reset) instead of global sim time.
+      - Per-env random frequency drawn from frequency_range instead of a single fixed value.
+      - Phase and frequency are resampled every resample_time seconds within each episode.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
+
+    cycle_period = on_duration + off_duration
+
+    # Initialize buffers on first call
+    if not hasattr(env, "_sin_force_z_new_phases"):
+        env._sin_force_z_new_phases = torch.rand(
+            (num_envs, num_bodies), device=device
+        ) * 2 * torch.pi
+    if not hasattr(env, "_sin_force_z_new_freqs"):
+        env._sin_force_z_new_freqs = torch.empty(
+            (num_envs, num_bodies), device=device
+        ).uniform_(frequency_range[0], frequency_range[1])
+    if not hasattr(env, "_duty_cycle_z_new_offset"):
+        env._duty_cycle_z_new_offset = torch.rand(num_envs, device=device) * cycle_period
+    if not hasattr(env, "_sin_force_z_new_resample_step"):
+        env._sin_force_z_new_resample_step = torch.zeros(num_envs, dtype=torch.long, device=device)
+
+    # Per-env episode time: resets to 0 when env resets
+    episode_steps = env.episode_length_buf  # [num_envs] int tensor
+    t = (episode_steps * env.step_dt).unsqueeze(-1)  # [num_envs, 1]
+
+    # Resample phase & frequency for envs that crossed the resample boundary
+    resample_interval_steps = int(resample_time / env.step_dt)
+    needs_resample = (episode_steps - env._sin_force_z_new_resample_step) >= resample_interval_steps
+    resample_ids = needs_resample.nonzero(as_tuple=False).squeeze(-1)
+    if resample_ids.numel() > 0:
+        env._sin_force_z_new_phases[resample_ids] = (
+            torch.rand((resample_ids.numel(), num_bodies), device=device) * 2 * torch.pi
+        )
+        env._sin_force_z_new_freqs[resample_ids] = torch.empty(
+            (resample_ids.numel(), num_bodies), device=device
+        ).uniform_(frequency_range[0], frequency_range[1])
+        env._sin_force_z_new_resample_step[resample_ids] = episode_steps[resample_ids]
+
+    # Reset resample counter for envs that just started a new episode (episode_steps == 0)
+    just_reset = (episode_steps == 0)
+    reset_ids = just_reset.nonzero(as_tuple=False).squeeze(-1)
+    if reset_ids.numel() > 0:
+        env._sin_force_z_new_resample_step[reset_ids] = 0
+
+    # Duty cycle
+    cycle_time = (t.squeeze(-1) + env._duty_cycle_z_new_offset) % cycle_period
+    on_mask = (cycle_time < on_duration).float().unsqueeze(-1)  # [num_envs, 1]
+
+    if isinstance(force_amplitude, (list, tuple)):
+        amp = torch.tensor(force_amplitude, device=device).view(1, num_bodies)
+    else:
+        amp = force_amplitude
+
+    # Sinusoidal force magnitude: [num_envs, num_bodies]
+    fz = amp * torch.sin(
+        2 * torch.pi * env._sin_force_z_new_freqs * t + env._sin_force_z_new_phases
+    ) * on_mask
+
+    # Build [num_envs, num_bodies, 3] with only Z component
+    forces = torch.zeros(num_envs, num_bodies, 3, device=device)
+    forces[:, :, 2] = fz
+    torques = torch.zeros_like(forces)
 
     asset.set_external_force_and_torque(
         forces,
         torques,
         body_ids=asset_cfg.body_ids,
     )
+
+    # Store for external logging
+    env._compliance_push_fz = fz
+
+
+def log_env0_compliance(
+    env,
+    env_ids: torch.Tensor,
+    log_path: str = "env0_compliance_log.csv",
+):
+    """Log applied force and MSD deformation for env[0] to a CSV file."""
+    import csv
+
+    if not hasattr(env, "_env0_log_writer"):
+        f = open(log_path, "w", newline="")
+        writer = csv.writer(f)
+        writer.writerow(["step", "sim_time", "force_z", "x_def_x", "x_def_y", "x_def_z"])
+        env._env0_log_file = f
+        env._env0_log_writer = writer
+
+    # Applied force
+    fz = 0.0
+    if hasattr(env, "_compliance_push_fz"):
+        fz = env._compliance_push_fz[0, 0].item()
+
+    # MSD deformation
+    x_def = [0.0, 0.0, 0.0]
+    if hasattr(env, "compliance_manager") and env.compliance_manager is not None:
+        msd = env.compliance_manager._msd_system
+        if msd is not None:
+            x_def = msd.state["x_def"][0, 0:3].cpu().tolist()
+
+    t = env.common_step_counter * env.step_dt
+    env._env0_log_writer.writerow([
+        env.common_step_counter,
+        f"{t:.4f}",
+        f"{fz:.4f}",
+        f"{x_def[0]:.6f}",
+        f"{x_def[1]:.6f}",
+        f"{x_def[2]:.6f}",
+    ])
+
+    if env.common_step_counter % 500 == 0:
+        env._env0_log_file.flush()

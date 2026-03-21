@@ -84,7 +84,7 @@ class CommandsCfg:
     # Fixed stiffness = 350
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(700.0, 700.0)), # 350.0, 350.0)), # 800.0, 800.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(500.0, 500.0)), # 800.0, 800.0)),
     )
 
     compliance = ComplianceCommandCfg(
@@ -167,7 +167,7 @@ class EventCfg:
     compliance_push = EventTerm(
         func=apply_sinusoidal_forces_z,
         mode="interval",
-        interval_range_s=(0.02, 0.02),  # every RL step
+        interval_range_s=(0.02, 0.02), # 0.0, 7.0), #  # every RL step
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
             "force_amplitude": [70.0],
@@ -227,24 +227,24 @@ class TerminationsCfg:
     )
 
 
-@configclass
-class CurriculumCfg:
-    # Simple force ramp: 0 N for first 1000 iters, then linearly 0→70 N over next 1000 iters
-    # warmup_steps = 1000 iters × 24 steps/iter = 24000
-    # ramp_steps   = 1000 iters × 24 steps/iter = 24000
-    force_amplitude = CurrTerm(
-        func=mdp_curr.modify_term_cfg,
-        params={
-            "address": "events.compliance_push.params.force_amplitude",
-            "modify_fn": ramp_force_amplitude,
-            "modify_params": {
-                "initial": 0.0,
-                "final": 70.0,
-                "warmup_steps": 24000,   # 1000 iters × 24 steps
-                "ramp_steps": 24000,     # 1000 iters × 24 steps
-            },
-        },
-    )
+#@configclass
+#class CurriculumCfg:
+#    # Simple force ramp: 0 N for first 1000 iters, then linearly 0→70 N over next 1000 iters
+#    # warmup_steps = 1000 iters × 24 steps/iter = 24000
+#    # ramp_steps   = 1000 iters × 24 steps/iter = 24000
+#    force_amplitude = CurrTerm(
+#        func=mdp_curr.modify_term_cfg,
+#        params={
+#            "address": "events.compliance_push.params.force_amplitude",
+#            "modify_fn": ramp_force_amplitude,
+#            "modify_params": {
+#                "initial": 0.0,
+#                "final": 70.0,
+#                "warmup_steps": 24000,   # 1000 iters × 24 steps
+#                "ramp_steps": 24000,     # 1000 iters × 24 steps
+#            },
+#        },
+#    )
 
 
 @configclass
@@ -256,7 +256,7 @@ class UnitreeGo2StanceFixedStiffnessEnvCfg(ManagerBasedRLEnvCfg):
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
         events: EventCfg = EventCfg()
-        curriculum: CurriculumCfg = CurriculumCfg()
+ #       curriculum: CurriculumCfg = CurriculumCfg()
 
         def __post_init__(self):
             self.decimation = 4
