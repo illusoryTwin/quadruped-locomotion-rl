@@ -1,17 +1,8 @@
 import gymnasium as gym
 
 from .flat_walk_env_cfg import UnitreeGo2WalkEnvCfg
-from .soft_walk_env_cfg import UnitreeGo2WalkSoftEnvCfg
-from .rough_walk_env_cfg import UnitreeGo2WalkRoughEnvCfg
-from .stairs_climbing_env_cfg import UnitreeGo2WalkStairsEnvCfg
 from .compliant_stance_env_cfg import UnitreeGo2StanceEnvCfg
 from .compliant_stance_fixed_stiffness_env_cfg import UnitreeGo2StanceFixedStiffnessEnvCfg
-from src.algorithms.rsl_rl_ppo_cfg import (
-    UnitreeGo2PPORunnerCfg,
-    UnitreeGo2OrientationPPORunnerCfg,
-    UnitreeGo2PosTrackingPPORunnerCfg,
-    UnitreeGo2SoftPosTrackingPPORunnerCfg,
-)
 
 gym.register(
     id="go2_walk_flat",
