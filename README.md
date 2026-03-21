@@ -11,11 +11,6 @@ Compliance implementation (in task-space) is in the `feat/compliance_task_space`
 The compliance system models deformations as second-order mass-spring-damper (MSD) system.
 External forces applied to the robot's bodies, and the resulting deformations in Cartesian space are computed by integrating the MSD dynamics. The policy is rewarded for tracking these deformed states.
 
-- `CompliantRLEnv` (in `src/modules/envs/compliant_rl_env.py`) extends `ManagerBasedRLEnv` — it overrides `step()` to call `_compute_compliance_targets()` after physics simulation to calculate new state under compliance. Uses open-loop integration of commanded velocity for the rigid reference.
-
-- `CompliantStabilityRLEnv` (in `src/modules/envs/compliant_stability_rl_env.py`) — variant that uses actual robot position/velocity as the rigid reference (closed-loop, no drift). Used for the stance task.
-
-
 - `ComplianceManager` (in `src/compliance/compliance_manager.py`) implements the core compliance logic: it reads external forces from monitored bodies and updates the MSD model to produce deformation vectors. Compliance parameters are defined in `compliance_manager_cfg.py` — compliant bodies, per-body Cartesian stiffness scales, timestep (`dt`), base stiffness, and base inertia.
 
 
@@ -120,8 +115,6 @@ quadruped-locomotion-rl/
 │       │   ├── compliant_stance_env_cfg.py
 │       │   ├── compliant_stance_fixed_stiffness_env_cfg.py
 │       │   └── stance_env_cfg.py
-│       ├── envs/               # Custom environments
-│       │   └── compliant_rl_env.py
 │       ├── commands/           # Command generators
 │       │   └── stiffness_command.py
 │       ├── terrains.py
