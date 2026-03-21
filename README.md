@@ -136,35 +136,27 @@ quadruped-locomotion-rl/
 
 ## Installation
 
-### Option A: Docker (recommended)
+### Training Environment (Isaac Sim + Isaac Lab)
 
-No local Isaac Sim installation needed. Requires only Docker and NVIDIA Container Toolkit.
-
-```bash
-cd docker
-docker compose build
-docker compose run quadruped-train
-```
-
-Source code is bind-mounted, so code changes apply immediately without rebuilding.
-
-Required sibling repos (relative to this repo's parent directory):
-- `../IsaacLab/`
-- `../unitree_robotics/unitree_rl_lab/`
-
-### Option B: Local (Isaac Sim + Isaac Lab)
-
-Follow the official installation guide:
+Follow the official Isaac Lab installation guide:
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
 
-**Dependencies:**
+**Training dependencies:**
+
 | Package | Version | Notes |
 |---------|---------|-------|
-| Isaac Sim | 5.1 | Base simulator |
-| Isaac Lab | 2.3.0 | RL framework (installed via guide above) |
-| RSL-RL | 3.0.1+ | `pip install rsl-rl` |
-| isaaclab_tasks | - | Comes with Isaac Lab |
-| isaaclab_assets | - | Comes with Isaac Lab |
+| Isaac Sim | 5.1 | NVIDIA Omniverse simulator ([install guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html)) |
+| Isaac Lab | 2.3.0 | RL framework (installed via Isaac Sim guide above) |
+| RSL-RL | 3.0.1+ | PPO implementation (`pip install rsl-rl`) |
+| unitree_rl_lab | - | IsaacLab extension for Unitree robots (sibling repo: `../unitree_robotics/unitree_rl_lab/`) |
+| CUDA | 12.x | GPU acceleration |
+
+After installing Isaac Sim and Isaac Lab, install this project:
+
+```bash
+cd quadruped-locomotion-rl
+pip install -e .
+```
 
 ### Deployment Environment (MuJoCo)
 
@@ -175,8 +167,7 @@ Alternatively, set up locally:
 ```bash
 conda create -n go2_deploy python=3.10 -y
 conda activate go2_deploy
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install mujoco pygame numpy pyyaml
+pip install -r requirements.txt
 
 export UNITREE_MUJOCO_PATH=~/unitree_robotics/unitree_mujoco
 mkdir -p $(dirname $UNITREE_MUJOCO_PATH)

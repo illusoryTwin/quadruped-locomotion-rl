@@ -1,0 +1,7 @@
+# Deployment / MuJoCo testing dependencies
+torch
+torchvision
+mujoco
+pygame
+numpy
+pyyaml
