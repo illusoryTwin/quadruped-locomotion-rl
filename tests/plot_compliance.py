@@ -1,8 +1,13 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from pathlib import Path
 
-df = pd.read_csv("env0_compliance_log.csv")
+ROOT_DIR = Path(__file__).resolve().parent.parent
+PLOTS_DIR = ROOT_DIR / "plots"
+PLOTS_DIR.mkdir(exist_ok=True)
+
+df = pd.read_csv(ROOT_DIR / "env0_compliance_log.csv")
 
 fig, axes = plt.subplots(3, 1, figsize=(16, 12), sharex=True)
 fig.suptitle("Go2 Compliant Stance – Forces & Deformations (Last Training Run: 2026-03-15)",
@@ -36,8 +41,8 @@ ax.legend(loc="upper left", fontsize=10)
 ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("env0_compliance_plot_latest.png", dpi=150, bbox_inches="tight")
-print("Saved: env0_compliance_plot_latest.png")
+plt.savefig(PLOTS_DIR / "env0_compliance_plot_latest.png", dpi=150, bbox_inches="tight")
+print(f"Saved: {PLOTS_DIR / 'env0_compliance_plot_latest.png'}")
 
 # --- Also create a zoomed view of the last 200s to see detail ---
 fig2, axes2 = plt.subplots(2, 1, figsize=(16, 8), sharex=True)
@@ -66,8 +71,8 @@ ax.legend(loc="upper left", fontsize=10)
 ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("env0_compliance_zoom_latest.png", dpi=150, bbox_inches="tight")
-print("Saved: env0_compliance_zoom_latest.png")
+plt.savefig(PLOTS_DIR / "env0_compliance_zoom_latest.png", dpi=150, bbox_inches="tight")
+print(f"Saved: {PLOTS_DIR / 'env0_compliance_zoom_latest.png'}")
 
 # Print some stats
 print(f"\n--- Data Summary ---")

@@ -1,0 +1,36 @@
+# Mapping from task name (used in training --task flag) to deployment parameters.
+#
+# experiment_name: log folder under logs/rsl_rl/ (set by agent_cfg.experiment_name)
+# deploy_config:   config file name (without .yaml) under deploy/configs/
+
+go2_compliant_stance:
+  experiment_name: unitree_go2_stance_soft
+  deploy_config: compliant_stance
+
+go2_compliant_stance_fixed_stiffness:
+  experiment_name: unitree_go2_stance_fixed_stiffness
+  deploy_config: compliant_stance
+
+go2_default_stance:
+  experiment_name: unitree_go2_stance_default
+  deploy_config: default_stance
+
+go2_pos_xy_tracking:
+  experiment_name: go2_pos_xy_tracking
+  deploy_config: pos_xy_tracking
+
+go2_soft_pos_xy_tracking:
+  experiment_name: go2_soft_pos_xy_tracking
+  deploy_config: soft_pos_xy_tracking
+
+go2_soft_walk:
+  experiment_name: unitree_go2_walk_soft
+  deploy_config: soft_walk
+
+go2_walk_flat:
+  experiment_name: unitree_go2_walk
+  deploy_config: flat_walk
+
+go2_orientation_tracking:
+  experiment_name: go2_orientation_tracking
+  deploy_config: orientation_tracking

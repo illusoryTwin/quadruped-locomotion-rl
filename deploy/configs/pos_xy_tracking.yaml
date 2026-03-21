@@ -1,0 +1,22 @@
+# Deploy config for go2_pos_xy_tracking
+# Observation: 47 dims/frame x 10 history = 470 total
+#
+# velocity_commands: 3D [lin_vel_x, lin_vel_y, ang_vel_z]
+#   lin_vel_x/y are zero (handled by position_commands), ang_vel_z controls yaw
+# position_commands: 2D body-frame velocity [vx, vy]
+#   [0, 0] = stand still, [0.5, 0] = walk forward at 0.5 m/s
+
+observation_terms:
+  - {name: base_ang_vel, dim: 3, source: imu_gyroscope}
+  - {name: projected_gravity, dim: 3, source: imu_gravity}
+  - {name: joint_pos, dim: 12, source: joint_pos_rel}
+  - {name: joint_vel, dim: 12, source: joint_vel}
+  - {name: actions, dim: 12, source: last_action}
+  - {name: velocity_commands, dim: 3, source: command, default: [0.0, 0.0, 0.0]}
+  - {name: position_commands, dim: 2, source: command, default: [0.0, 0.0]}
+
+history_length: 10
+action_scale: 0.5
+control_dt: 0.02
+kp: 25.0
+kd: 0.5

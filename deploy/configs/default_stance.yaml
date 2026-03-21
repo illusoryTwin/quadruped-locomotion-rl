@@ -1,0 +1,16 @@
+# Deploy config for go2_default_stance
+# Observation: 45 dims/frame x 10 history = 450 total
+
+observation_terms:
+  - {name: joint_pos, dim: 12, source: joint_pos_rel}
+  - {name: joint_vel, dim: 12, source: joint_vel}
+  - {name: actions, dim: 12, source: last_action}
+  - {name: projected_gravity, dim: 3, source: imu_gravity}
+  - {name: position_commands, dim: 3, source: command, default: [0.0, 0.0, 0.3]}
+  - {name: base_ang_vel, dim: 3, source: imu_gyroscope}
+
+history_length: 10
+action_scale: 0.5
+control_dt: 0.02
+kp: 25.0
+kd: 0.5

@@ -1,0 +1,108 @@
+# =============================================================================
+# Quadruped Locomotion Deploy - MuJoCo + Policy Inference
+# =============================================================================
+#
+# Interactive shell (MuJoCo + manual policy testing):
+#   cd quadruped-locomotion-rl/deploy/docker
+#   docker compose build
+#   docker compose run quadruped-deploy
+#
+# One-shot policy runner (auto-launches MuJoCo + policy):
+#   docker compose run quadruped-policy go2_pos_xy_tracking
+#   docker compose run quadruped-policy go2_compliant_stance
+#   DURATION=60 docker compose run quadruped-policy go2_soft_pos_xy_tracking
+#
+# Source code is bind-mounted — code changes apply immediately without rebuilds.
+#
+# Required sibling repos (relative to this repo's parent directory):
+#   ../unitree_robotics/unitree_mujoco/
+#   ../unitree_robotics/unitree_sdk2_python/
+
+x-gpu-deploy: &gpu-deploy
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu]
+
+services:
+  # ===========================================================================
+  # Interactive deploy/test container
+  # ===========================================================================
+  quadruped-deploy:
+    build:
+      context: ../../../
+      dockerfile: quadruped-locomotion-rl/deploy/docker/Dockerfile
+    image: quadruped-deploy
+    container_name: quadruped-deploy
+    ipc: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    volumes:
+      # X11 socket for MuJoCo GUI
+      - type: bind
+        source: /tmp/.X11-unix
+        target: /tmp/.X11-unix
+      # Bind-mount source for live editing
+      - type: bind
+        source: ../../
+        target: /workspace/quadruped-locomotion-rl
+      - type: bind
+        source: ../../../unitree_robotics/unitree_mujoco
+        target: /workspace/unitree_mujoco
+      # Persistent volume for logs
+      - type: volume
+        source: deploy-logs
+        target: /workspace/logs
+    network_mode: host
+    deploy: *gpu-deploy
+    stdin_open: true
+    tty: true
+
+  # ===========================================================================
+  # One-shot policy runner (auto-launches MuJoCo + policy)
+  # ===========================================================================
+  # Usage:
+  #   docker compose run quadruped-policy <task_name>
+  #
+  # Examples:
+  #   docker compose run quadruped-policy go2_pos_xy_tracking
+  #   docker compose run quadruped-policy go2_compliant_stance
+  #   DURATION=60 docker compose run quadruped-policy go2_soft_pos_xy_tracking
+  #   CMD_ARGS="position_commands=0.5,0.0" docker compose run quadruped-policy go2_pos_xy_tracking
+  #
+  # Auto-resolves the latest trained policy and correct deploy config from
+  # task_mapping.yaml. Override with POLICY_PATH env var if needed.
+  quadruped-policy:
+    image: quadruped-deploy
+    container_name: quadruped-policy
+    entrypoint: /workspace/quadruped-locomotion-rl/deploy/docker/entrypoint-policy.sh
+    ipc: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - POLICY_PATH=${POLICY_PATH:-}
+      - DURATION=${DURATION:-120}
+      - CMD_ARGS=${CMD_ARGS:-}
+    volumes:
+      - type: bind
+        source: /tmp/.X11-unix
+        target: /tmp/.X11-unix
+      - type: bind
+        source: ../../
+        target: /workspace/quadruped-locomotion-rl
+      - type: bind
+        source: ../../../unitree_robotics/unitree_mujoco
+        target: /workspace/unitree_mujoco
+      - type: volume
+        source: deploy-logs
+        target: /workspace/logs
+    network_mode: host
+    deploy: *gpu-deploy
+    stdin_open: true
+    tty: true
+
+volumes:
+  deploy-logs:
