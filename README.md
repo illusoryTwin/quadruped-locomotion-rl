@@ -19,7 +19,7 @@ External forces applied to the robot's bodies, and the resulting deformations in
 - `ComplianceManager` (in `src/compliance/compliance_manager.py`) implements the core compliance logic: it reads external forces from monitored bodies and updates the MSD model to produce deformation vectors. Compliance parameters are defined in `compliance_manager_cfg.py` — compliant bodies, per-body Cartesian stiffness scales, timestep (`dt`), base stiffness, and base inertia.
 
 
-- The task configuration is in `flat_walk_soft_env_cfg.py` (`UnitreeGo2WalkSoftEnvCfg`) for a walking task.
+- The task configuration is in `soft_walk_env_cfg.py` (`UnitreeGo2WalkSoftEnvCfg`) for a walking task.
 
 The compliant stance task (stable stance under external forces) is in `compliant_stance_env_cfg.py` (`UnitreeGo2StanceEnvCfg`).
 
@@ -85,16 +85,15 @@ https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installa
 
 This repository includes reinforcement learning locomotion experiments for the Unitree Go2 robot and the deployment infrastructure required to test them in Mujoco simulator and transfer them to real hardware.
 
-Currently supported tasks include:
+Currently supported tasks:
 
-- walking on flat terrain
-- walking on rough terrain
-- climbing upstairs 
-
-These tasks serve as a basis for future experiments, including:
-
-- Mixture-of-Experts–based policy architectures
-- Soft compliant policies 
+| Task ID | Environment Config | Description |
+|---------|-------------------|-------------|
+| `go2_walk_flat` | `flat_walk_env_cfg.py` | Walking on flat terrain |
+| `go2_soft_walk` | `compliant_walk_env_cfg.py` | Soft compliant walking |
+| `go2_compliant_stance` | `compliant_stance_env_cfg.py` | Compliant stance under external forces |
+| `go2_compliant_stance_fixed_stiffness` | `compliant_stance_fixed_stiffness_env_cfg.py` | Compliant stance with fixed stiffness |
+| `go2_default_stance` | `stance_env_cfg.py` | Default standing pose |
 
 This repo uses Isaac Sim 5.1 and Isaac Lab 2.3.0.
 
@@ -116,9 +115,11 @@ quadruped-locomotion-rl/
 │   └── modules/
 │       ├── tasks/              # Environment configurations
 │       │   ├── flat_walk_env_cfg.py
-│       │   ├── flat_walk_soft_env_cfg.py
-│       │   ├── rough_walk_env_cfg.py
-│       │   └── stairs_climbing_env_cfg.py
+│       │   ├── compliant_walk_env_cfg.py
+│       │   ├── soft_walk_env_cfg.py
+│       │   ├── compliant_stance_env_cfg.py
+│       │   ├── compliant_stance_fixed_stiffness_env_cfg.py
+│       │   └── stance_env_cfg.py
 │       ├── envs/               # Custom environments
 │       │   └── compliant_rl_env.py
 │       ├── commands/           # Command generators
