@@ -1,0 +1,3 @@
+[submodule "quadruped-locomotion-deploy"]
+	path = quadruped-locomotion-deploy
+	url = git@github.com:illusoryTwin/quadruped-locomotion-deploy.git
