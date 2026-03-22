@@ -79,6 +79,7 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 import gymnasium as gym
 import logging
 import os
+import subprocess
 import time
 import torch
 from datetime import datetime
@@ -105,6 +106,25 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
+
+
+def _export_git_diff(export_dir: str):
+    """Save git diff to exported/ so each run records what code changed."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.makedirs(export_dir, exist_ok=True)
+    try:
+        diff = subprocess.run(
+            ["git", "diff", "HEAD"],
+            cwd=repo_root, capture_output=True, text=True, timeout=10,
+        )
+        diff_text = diff.stdout
+        if not diff_text.strip():
+            diff_text = "# No changes relative to last commit.\n"
+        with open(os.path.join(export_dir, "changes.diff"), "w") as f:
+            f.write(diff_text)
+        print(f"[INFO] Saved git diff to: {os.path.join(export_dir, 'changes.diff')}")
+    except Exception as e:
+        print(f"[WARNING] Could not save git diff: {e}")
 
 
 def _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir: str):
@@ -315,6 +335,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
 
         # Also save metadata for deployment
         _export_deployment_metadata(env, env_cfg, agent_cfg, export_dir)
+
+        # Save git diff once (same for entire run)
+        diff_path = os.path.join(export_dir, "changes.diff")
+        if not os.path.exists(diff_path):
+            _export_git_diff(export_dir)
 
         # Switch back to train mode
         runner.train_mode()
