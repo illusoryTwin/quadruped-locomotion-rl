@@ -52,3 +52,4 @@ gym.register(
         "env_cfg_entry_point": "src.modules.tasks.compliant_walk_env_cfg:UnitreeGo2SoftWalkEnvCfg",
         "rsl_rl_cfg_entry_point": "src.algorithms.rsl_rl_ppo_cfg:UnitreeGo2SoftWalkPPORunnerCfg",
     },
+)
