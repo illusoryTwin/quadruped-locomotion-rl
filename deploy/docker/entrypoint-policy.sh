@@ -23,6 +23,7 @@ set -e
 
 TASK_MAPPING="/workspace/quadruped-locomotion-rl/deploy/task_mapping.yaml"
 LOGS_ROOT="/workspace/quadruped-locomotion-rl/logs/rsl_rl"
+DEPLOY_POLICIES="/workspace/quadruped-locomotion-rl/deploy/policies"
 CONFIGS_DIR="/workspace/quadruped-locomotion-rl/deploy/configs"
 
 DDS_INTERFACE="${DDS_INTERFACE:-lo}"
@@ -66,21 +67,29 @@ CONFIG_PATH="${CONFIGS_DIR}/${DEPLOY_CONFIG}.yaml"
 if [ -n "$POLICY_PATH" ]; then
     echo "[entrypoint] Using override POLICY_PATH=$POLICY_PATH"
 else
-    EXPERIMENT_DIR="${LOGS_ROOT}/${EXPERIMENT_NAME}"
-    if [ ! -d "$EXPERIMENT_DIR" ]; then
-        echo "[entrypoint] ERROR: No training logs found at $EXPERIMENT_DIR"
-        echo "[entrypoint] Train this task first: python scripts/train.py --task=$TASK_NAME"
-        exit 1
-    fi
+    # 1) Check deploy/policies/ first (curated, committed policies)
+    DEPLOY_MATCH=$(ls -1d "$DEPLOY_POLICIES/${EXPERIMENT_NAME}"* 2>/dev/null | sort -r | head -1)
+    if [ -n "$DEPLOY_MATCH" ] && [ -f "$DEPLOY_MATCH/policy.pt" ]; then
+        POLICY_PATH="$DEPLOY_MATCH/policy.pt"
+        echo "[entrypoint] Found deploy policy: $POLICY_PATH"
+    else
+        # 2) Fall back to logs/ (local training results)
+        EXPERIMENT_DIR="${LOGS_ROOT}/${EXPERIMENT_NAME}"
+        if [ ! -d "$EXPERIMENT_DIR" ]; then
+            echo "[entrypoint] ERROR: No policy found in deploy/policies/ or logs/"
+            echo "[entrypoint] Either copy a policy to deploy/policies/ or train: python scripts/train.py --task=$TASK_NAME"
+            exit 1
+        fi
 
-    # Find latest run directory (by name, timestamps sort lexicographically)
-    LATEST_RUN=$(ls -1 "$EXPERIMENT_DIR" | sort -r | head -1)
-    POLICY_PATH="${EXPERIMENT_DIR}/${LATEST_RUN}/exported/policy.pt"
+        # Find latest run directory (by name, timestamps sort lexicographically)
+        LATEST_RUN=$(ls -1 "$EXPERIMENT_DIR" | sort -r | head -1)
+        POLICY_PATH="${EXPERIMENT_DIR}/${LATEST_RUN}/exported/policy.pt"
 
-    if [ ! -f "$POLICY_PATH" ]; then
-        echo "[entrypoint] ERROR: No exported policy at $POLICY_PATH"
-        echo "[entrypoint] Training may still be in progress (no checkpoint exported yet)."
-        exit 1
+        if [ ! -f "$POLICY_PATH" ]; then
+            echo "[entrypoint] ERROR: No exported policy at $POLICY_PATH"
+            echo "[entrypoint] Training may still be in progress (no checkpoint exported yet)."
+            exit 1
+        fi
     fi
 fi
 

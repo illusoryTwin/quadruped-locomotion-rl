@@ -1,0 +1,35 @@
+artifact_version: 1.0.0
+created_at: '2026-03-25T12:48:08.609159'
+task_name: go2_compliant_stance
+model:
+  policy_path: policy.pt
+  input_dim: 1884160
+  output_dim: 12
+  has_normalizer: true
+robot:
+  joint_names:
+  - FL_hip_joint
+  - FR_hip_joint
+  - RL_hip_joint
+  - RR_hip_joint
+  - FL_thigh_joint
+  - FR_thigh_joint
+  - RL_thigh_joint
+  - RR_thigh_joint
+  - FL_calf_joint
+  - FR_calf_joint
+  - RL_calf_joint
+  - RR_calf_joint
+  num_joints: 12
+control:
+  control_dt: 0.02
+  control_frequency: 50.0
+  action_scale: 0.5
+  default_joint_pos:
+    .*L_hip_joint: 0.1
+    .*R_hip_joint: -0.1
+    F[L,R]_thigh_joint: 0.8
+    R[L,R]_thigh_joint: 1.0
+    .*_calf_joint: -1.5
+observation:
+  obs_dim: 1884160
