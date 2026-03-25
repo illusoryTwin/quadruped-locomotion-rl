@@ -157,7 +157,7 @@ class Go2PolicyDeployer:
         Without this step, the policy receives out-of-distribution observations
         and produces extreme actions.
         """
-        # Read current joint positions (SDK order) → convert to Isaac order
+        # Read current joint positions (SDK order) -> convert to Isaac order
         sdk_pos = np.array(
             [self.state.motor_state[i].q for i in range(12)], dtype=np.float32
         )
@@ -265,9 +265,6 @@ class Go2PolicyDeployer:
 
     def _init_history_from_state(self):
         """Initialize history buffers with first real observation.
-
-        Matches Isaac Lab's CircularBuffer behavior: all slots filled
-        with the first observation on first push.
         """
         self.term_histories = {}
         for term in self.obs_terms:
@@ -341,7 +338,7 @@ class Go2PolicyDeployer:
         cmd.crc = self.crc.Crc(cmd)
         self.cmd_pub.Write(cmd)
 
-    def run(self, duration: float = 60.0):
+    def run(self, duration: float = 60.0, keyboard: bool = False):
         """Run the control loop."""
         print("=" * 60)
         print(f"[INFO] Deploying policy")
@@ -353,6 +350,13 @@ class Go2PolicyDeployer:
         print("=" * 60)
         print("[INFO] Press Ctrl+C to stop")
         print()
+
+        # Optional keyboard control (managed by KeyboardController)
+        kb = None
+        if keyboard and "velocity_commands" in self.commands:
+            from core.command_manager import KeyboardController
+            kb = KeyboardController(self.commands["velocity_commands"])
+            kb.start()
 
         start_time = time.time()
         step_count = 0
@@ -371,10 +375,13 @@ class Go2PolicyDeployer:
 
                 if step_count % int(1.0 / self.control_dt) == 0:
                     elapsed_total = time.time() - start_time
-                    print(f"[INFO] Running... {elapsed_total:.1f}s / {duration:.1f}s", end="\r")
+                    print(f"\r[INFO] Running... {elapsed_total:.1f}s / {duration:.1f}s  ", end="\r")
 
         except KeyboardInterrupt:
             print("\n[INFO] Stopped by user")
+        finally:
+            if kb:
+                kb.stop()
 
         print(f"\n[INFO] Finished after {time.time() - start_time:.1f}s, {step_count} steps")
 
@@ -425,6 +432,7 @@ Examples:
     parser.add_argument("--interface", type=str, default="lo", help="Network interface ('lo' for sim)")
     parser.add_argument("--domain", type=int, default=1, help="DDS domain ID (1 for sim, 0 for real)")
     parser.add_argument("--duration", type=float, default=60.0, help="Run duration in seconds")
+    parser.add_argument("--keyboard", action="store_true", help="Enable WASD keyboard velocity control")
 
     args = parser.parse_args()
 
@@ -450,7 +458,7 @@ Examples:
         cmd_overrides=cmd_overrides,
     )
 
-    deployer.run(duration=args.duration)
+    deployer.run(duration=args.duration, keyboard=args.keyboard)
 
 
 if __name__ == "__main__":

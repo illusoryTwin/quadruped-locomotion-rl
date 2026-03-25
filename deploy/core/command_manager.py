@@ -1,99 +1,132 @@
+"""Keyboard input handler for live velocity control.
+
+Runs in a background thread.
+Fully self-contained — no dependency on controller or deployer internals.
+
+Usage:
+    commands = {"velocity_commands": np.array([0.5, 0.0, 0.0])}
+    kb = KeyboardController(commands["velocity_commands"])
+    kb.start()
+    # ... control loop reads commands["velocity_commands"] each step ...
+    kb.stop()
+"""
+
+import sys
 import threading
 import time
 
+import numpy as np
 
-class CommandManager:
-    """Handles velocity command input for the robot controller."""
 
-    def __init__(self, controller):
-        self.controller = controller
-        self.running = False
+class KeyboardController:
+    """Background thread that maps WASD keys to velocity command updates."""
+
+    # Arrow keys send escape sequences: ESC [ A/B/C/D
+    # We handle them in _on_key via _read_escape_seq
+    KEYMAP = {
+        "i": (0, +1),   # forward
+        "k": (0, -1),   # backward
+        "j": (1, +1),   # strafe left
+        "l": (1, -1),   # strafe right
+        "u": (2, +1),   # turn left
+        "o": (2, -1),   # turn right
+        # Arrow keys (resolved from escape sequences)
+        "UP":    (0, +1),   # forward
+        "DOWN":  (0, -1),   # backward
+        "LEFT":  (2, +1),   # turn left
+        "RIGHT": (2, -1),   # turn right
+    }
+
+    LIMITS = np.array([
+        [-1.0, 1.5],   # lin_vel_x
+        [-0.5, 0.5],   # lin_vel_y
+        [-1.0, 1.0],   # ang_vel_z
+    ], dtype=np.float32)
+
+    LABELS = ("vx", "vy", "wz")
+
+    def __init__(
+        self,
+        velocity_array: np.ndarray,
+        step_lin: float = 0.2,
+        step_ang: float = 0.2,
+    ):
+        self._vel = velocity_array
+        self._steps = np.array([step_lin, step_lin, step_ang], dtype=np.float32)
+        self._running = False
         self._thread = None
+        self._old_term = None
 
-        # Default commands
-        self.lin_vel_x = 0.0
-        self.lin_vel_y = 0.0
-        self.ang_vel_z = 0.0
 
-    def set_commands(self, lin_vel_x: float = 0.0, lin_vel_y: float = 0.0, ang_vel_z: float = 0.0):
-        """Set velocity commands."""
-        self.lin_vel_x = lin_vel_x
-        self.lin_vel_y = lin_vel_y
-        self.ang_vel_z = ang_vel_z
-        self.controller.set_commands(
-            lin_vel_x=lin_vel_x,
-            lin_vel_y=lin_vel_y,
-            ang_vel_z=ang_vel_z
-        )
-
-    def start_keyboard_control(self):
-        """Start a thread for keyboard velocity control."""
-        self.running = True
-        self._thread = threading.Thread(target=self._keyboard_loop, daemon=True)
-        self._thread.start()
-        print("[CommandManager] Keyboard control started.")
-        print("  W/S: Forward/Backward")
-        print("  A/D: Left/Right strafe")
-        print("  Q/E: Turn left/right")
-        print("  Space: Stop")
-
-    def stop(self):
-        """Stop keyboard control thread."""
-        self.running = False
-        if self._thread:
-            self._thread.join(timeout=1.0)
-
-    def _keyboard_loop(self):
-        """Non-blocking keyboard input loop."""
+    def start(self):
+        """Start listening for keyboard input."""
         try:
-            import sys
             import termios
             import tty
+            self._old_term = termios.tcgetattr(sys.stdin)
+            tty.setcbreak(sys.stdin.fileno())
+        except (ImportError, Exception) as exc:
+            print(f"[KeyboardController] Not available: {exc}")
+            return False
 
-            old_settings = termios.tcgetattr(sys.stdin)
-            try:
-                tty.setcbreak(sys.stdin.fileno())
-                while self.running:
-                    if self._kbhit():
-                        key = sys.stdin.read(1).lower()
-                        self._handle_key(key)
-                    time.sleep(0.05)
-            finally:
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        except ImportError:
-            print("[CommandManager] Keyboard control not available on this platform.")
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+        print("[KeyboardController] Keyboard control active")
+        print("  Arrows: forward/backward/turn    I/K: forward/backward")
+        print("  J/L: strafe left/right            U/O: turn left/right")
+        print("  Space: stop all")
+        return True
 
-    def _kbhit(self):
-        """Check if keyboard input is available."""
+    def stop(self):
+        """Stop the input thread and restore terminal."""
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=1.0)
+        self._restore_terminal()
+
+
+    def _restore_terminal(self):
+        if self._old_term is not None:
+            import termios
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self._old_term)
+            self._old_term = None
+
+    def _loop(self):
         import select
-        import sys
-        return select.select([sys.stdin], [], [], 0)[0] != []
+        try:
+            while self._running:
+                if select.select([sys.stdin], [], [], 0.05)[0]:
+                    ch = sys.stdin.read(1)
+                    key = self._resolve_key(ch, select)
+                    self._on_key(key)
+        finally:
+            self._restore_terminal()
 
-    def _handle_key(self, key: str):
-        """Handle keyboard input."""
-        speed = 0.5
-        turn_speed = 0.5
+    def _resolve_key(self, ch, select):
+        """Resolve escape sequences (arrow keys) to named keys."""
+        if ch == "\x1b":  # ESC
+            if select.select([sys.stdin], [], [], 0.01)[0]:
+                ch2 = sys.stdin.read(1)
+                if ch2 == "[" and select.select([sys.stdin], [], [], 0.01)[0]:
+                    ch3 = sys.stdin.read(1)
+                    return {"A": "UP", "B": "DOWN", "C": "RIGHT", "D": "LEFT"}.get(ch3, "")
+            return ""
+        return ch.lower()
 
-        if key == 'w':
-            self.lin_vel_x = min(self.lin_vel_x + speed, 1.5)
-        elif key == 's':
-            self.lin_vel_x = max(self.lin_vel_x - speed, -1.0)
-        elif key == 'a':
-            self.lin_vel_y = min(self.lin_vel_y + speed, 0.5)
-        elif key == 'd':
-            self.lin_vel_y = max(self.lin_vel_y - speed, -0.5)
-        elif key == 'q':
-            self.ang_vel_z = min(self.ang_vel_z + turn_speed, 1.0)
-        elif key == 'e':
-            self.ang_vel_z = max(self.ang_vel_z - turn_speed, -1.0)
-        elif key == ' ':
-            self.lin_vel_x = 0.0
-            self.lin_vel_y = 0.0
-            self.ang_vel_z = 0.0
+    def _on_key(self, key: str):
+        if key == " ":
+            self._vel[:] = 0.0
+        elif key in self.KEYMAP:
+            axis, sign = self.KEYMAP[key]
+            self._vel[axis] += sign * self._steps[axis]
+            self._vel[axis] = np.clip(
+                self._vel[axis], self.LIMITS[axis, 0], self.LIMITS[axis, 1]
+            )
+        else:
+            return
 
-        self.controller.set_commands(
-            lin_vel_x=self.lin_vel_x,
-            lin_vel_y=self.lin_vel_y,
-            ang_vel_z=self.ang_vel_z
+        status = "  ".join(
+            f"{lbl}={self._vel[i]:+.2f}" for i, lbl in enumerate(self.LABELS)
         )
-        print(f"\r[Cmd] vx={self.lin_vel_x:.2f} vy={self.lin_vel_y:.2f} wz={self.ang_vel_z:.2f}  ", end="")
+        print(f"\r[CMD] {status}          ", end="\r")

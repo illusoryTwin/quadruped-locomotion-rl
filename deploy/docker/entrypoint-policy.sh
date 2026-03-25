@@ -18,6 +18,7 @@
 #   CMD_ARGS       - extra --cmd arguments
 #   DDS_INTERFACE  - network interface (default: lo)
 #   DDS_DOMAIN     - DDS domain ID (default: 1)
+#   KEYBOARD       - set to 1 to enable WASD velocity control
 
 set -e
 
@@ -30,6 +31,7 @@ DDS_INTERFACE="${DDS_INTERFACE:-lo}"
 DDS_DOMAIN="${DDS_DOMAIN:-1}"
 DURATION="${DURATION:-120}"
 CMD_ARGS="${CMD_ARGS:-}"
+KEYBOARD="${KEYBOARD:-0}"
 
 # ---------------------------------------------------------------------------
 # Parse task name
@@ -121,6 +123,11 @@ for cmd_arg in $CMD_ARGS; do
     CMD_FLAGS="$CMD_FLAGS --cmd $cmd_arg"
 done
 
+KB_FLAG=""
+if [ "$KEYBOARD" = "1" ]; then
+    KB_FLAG="--keyboard"
+fi
+
 cd /workspace/quadruped-locomotion-rl
 python deploy/deploy.py \
     --policy "$POLICY_PATH" \
@@ -128,7 +135,7 @@ python deploy/deploy.py \
     --interface "$DDS_INTERFACE" \
     --domain "$DDS_DOMAIN" \
     --duration "$DURATION" \
-    $CMD_FLAGS &
+    $CMD_FLAGS $KB_FLAG &
 POLICY_PID=$!
 
 echo "[entrypoint] Both processes running (MuJoCo PID=$MUJOCO_PID, Policy PID=$POLICY_PID)"

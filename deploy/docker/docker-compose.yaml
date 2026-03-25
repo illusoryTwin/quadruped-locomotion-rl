@@ -8,9 +8,8 @@
 #   docker compose run quadruped-deploy
 #
 # One-shot policy runner (auto-launches MuJoCo + policy):
-#   docker compose run quadruped-policy go2_pos_xy_tracking
 #   docker compose run quadruped-policy go2_compliant_stance
-#   DURATION=60 docker compose run quadruped-policy go2_soft_pos_xy_tracking
+#   DURATION=60 docker compose run quadruped-policy go2_soft_walk
 #
 # Source code is bind-mounted — code changes apply immediately without rebuilds.
 #
