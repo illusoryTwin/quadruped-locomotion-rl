@@ -228,6 +228,76 @@ def track_compliant_base_pos_cmd_exp(
     return torch.exp(-z_err_sq / std**2)
 
 
+def track_compliant_base_xy_pos_cmd_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_position",
+    std: float = 0.1,
+) -> torch.Tensor:
+    """Exponential XY position tracking reward: command_xy + deformation_xy.
+
+    xy_ref = env_origin_xy + pos_cmd_xy + x_def_xy
+    reward = exp(-||xy_actual - xy_ref||^2 / std^2)
+
+    Mirrors track_compliant_base_pos_cmd_exp but for the XY plane.
+    """
+    if not hasattr(env, 'compliance_manager') or env.compliance_manager is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    robot = env.scene["robot"]
+    pos_cmd = env.command_manager.get_command(command_name)  # [num_envs, 3]
+    xy_rigid = env.scene.env_origins[:, :2] + pos_cmd[:, :2]
+
+    msd = env.compliance_manager._msd_system
+    x_def_xy = msd.state['x_def'][:, :2]  # XY deformation
+
+    xy_ref = xy_rigid + x_def_xy
+    xy_err_sq = (robot.data.root_pos_w[:, :2] - xy_ref).square().sum(dim=1)
+    return torch.exp(-xy_err_sq / std**2)
+
+
+def track_lin_vel_xy_exp(
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of linear velocity commands (xy axes) using exponential kernel.
+
+    When compliance is available, the target velocity is shifted by the MSD
+    deformation velocity (rotated to body frame) so the robot yields to
+    external XY forces while walking:
+        vel_target = cmd_vel_xy + R_world_to_body @ dx_def_xy
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    vel_target = env.command_manager.get_command(command_name)[:, :2].clone()
+
+    # Shift target by MSD deformation velocity (world -> body frame)
+    if hasattr(env, 'compliance_manager') and env.compliance_manager is not None:
+        msd = env.compliance_manager._msd_system
+        dx_def_xy = msd.state['dx_def'][:, :2]  # world frame
+        max_vel_def = 0.5  # m/s clamp to prevent runaway targets
+        dx_def_xy = max_vel_def * torch.tanh(dx_def_xy / max_vel_def)
+        heading = asset.data.heading_w
+        cos_h = torch.cos(heading)
+        sin_h = torch.sin(heading)
+        vel_target[:, 0] += cos_h * dx_def_xy[:, 0] + sin_h * dx_def_xy[:, 1]
+        vel_target[:, 1] += -sin_h * dx_def_xy[:, 0] + cos_h * dx_def_xy[:, 1]
+
+    lin_vel_error = torch.sum(
+        torch.square(vel_target - asset.data.root_lin_vel_b[:, :2]),
+        dim=1,
+    )
+    return torch.exp(-lin_vel_error / std**2)
+
+
+def track_ang_vel_z_exp(
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of angular velocity commands (yaw) using exponential kernel."""
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # compute the error
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
+    return torch.exp(-ang_vel_error / std**2)
+
+
 def feet_contact(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,

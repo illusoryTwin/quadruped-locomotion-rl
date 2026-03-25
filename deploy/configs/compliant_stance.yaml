@@ -7,7 +7,7 @@ observation_terms:
   - {name: actions, dim: 12, source: last_action}
   - {name: projected_gravity, dim: 3, source: imu_gravity}
   - {name: position_commands, dim: 3, source: command, default: [0.0, 0.0, 0.3]}
-  - {name: stiffness_commands, dim: 1, source: command, default: [700], scale: 0.01} # 700 # 800
+  - {name: stiffness_commands, dim: 1, source: command, default: [800.0], scale: 0.01} # 700 # 800
   - {name: base_ang_vel, dim: 3, source: imu_gyroscope}
 
 history_length: 10

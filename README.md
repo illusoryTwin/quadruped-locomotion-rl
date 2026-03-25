@@ -216,3 +216,26 @@ python -m deploy.mujoco.run_policy --config deploy/configs/go2_flat.yaml \
     --checkpoint logs/rsl_rl/unitree_go2_walk/2025-12-29_15-43-52/model_1500.pt
 ```
 
+
+
+
+
+```bash
+POLICY_PATH=logs/rsl_rl/unitree_go2_walk/2026-03-09_17-29-46/exported/policy.pt docker compose run quadruped-policy go2_walk_flat 
+```
+
+```bash
+python deploy/deploy.py \                                               
+    --policy logs/rsl_rl/unitree_go2_walk/2026-03-15_09-43-31/exported/policy.pt \   
+    --config deploy/configs/flat_walk.yaml \                            
+    --interface lo --domain 1                                           
+```
+
+
+# Real hardware   
+```bash
+python deploy/deploy.py \                                               
+    --policy logs/rsl_rl/unitree_go2_walk/2026-03-15_09-43-31/exported/policy.pt \   
+    --config deploy/configs/flat_walk.yaml \                            
+    --interface eth0 --domain 0                                         
+```                               

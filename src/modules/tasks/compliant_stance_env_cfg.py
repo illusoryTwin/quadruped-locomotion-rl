@@ -21,11 +21,12 @@ import isaaclab.envs.mdp as mdp_curr
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z, log_env0_compliance
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, log_env0_compliance
+# from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z, log_env0_compliance
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
-from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
+from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
 from src.modules.curriculums import staged_force_ramp, multi_stage_stiffness
 
 
@@ -86,8 +87,8 @@ class CommandsCfg:
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        # ranges=StiffnessCommandCfg.Ranges(kp=(410.0, 410.0)), # also good # 300.0, 300.0)),
-        ranges=StiffnessCommandCfg.Ranges(kp=(350.0, 700.0)), # also good # 300.0, 300.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(800.0, 800.0)), # also good # 300.0, 300.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(350.0, 700.0)), # also good # 300.0, 300.0)),
 
         # ranges=StiffnessCommandCfg.Ranges(kp=(330.0, 330.0)), # 300.0, 300.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(350.0, 350.0)), # 300.0, 300.0)), 3 good 
@@ -206,6 +207,19 @@ class EventCfg:
             "off_duration": 0.0,
         },
     )
+    
+    # # XY sinusoidal force on base, same interval as Z push
+    # compliance_push_xy = EventTerm(
+    #     func=apply_sinusoidal_forces_xy_push,
+    #     mode="interval",
+    #     interval_range_s=(0.02, 0.02),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [30.0],
+    #         "frequency": 0.5,
+    #     },
+    # )
+
 
     # Log env[0] force & deformation every step
     env0_logger = EventTerm(
@@ -230,15 +244,15 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     # Compliant position tracking (XYZ) — command + MSD deformation
-    track_compliant_pos = RewardTerm(
+    track_compliant_pos_z = RewardTerm(
         func=track_compliant_base_pos_cmd_exp,
         weight=2.0, # 2.5, # 2.0,
         params={"command_name": "base_position", "std": 0.04}, # 0.04}, # 0.08},
     )
-    # track_compliant_pos = RewardTerm(
-    #     func=track_compliant_base_pos_cmd_exp,
-    #     weight=2.5, # 2.0,
-    #     params={"command_name": "base_position", "std": 0.04}, # 0.04}, # 0.08},
+    # track_compliant_pos_xy = RewardTerm(
+    #     func=track_compliant_base_xy_pos_cmd_exp,
+    #     weight=2.0,
+    #     params={"command_name": "base_position", "std": 0.04},
     # )
     ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.075) # -0.05)
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-1.0) # -0.3) # -0.1) # -0.2) # -0.085) #-0.075) # -0.05)
@@ -281,7 +295,7 @@ class TerminationsCfg:
 @configclass
 class CurriculumCfg:
     # 5 stages × 1000 iters = 5000 iters, steps_per_stage = 1000 × 24 = 24000
-    # Stage 1 (0-1000): kp=700, 0→70N
+    # Stage 1 (0-1000): kp=700,  0→70N
     # Stage 2 (1000-2000): kp=600, 0→70N
     # Stage 3 (2000-3000): kp=500, 0→70N
     # Stage 4 (3000-4000): kp=400, 0→70N
@@ -297,6 +311,18 @@ class CurriculumCfg:
             },
         },
     )
+    
+    # force_amplitude_xy = CurrTerm(
+    #     func=mdp_curr.modify_term_cfg,
+    #     params={
+    #         "address": "events.compliance_push_xy.params.force_amplitude",
+    #         "modify_fn": staged_force_ramp,
+    #         "modify_params": {
+    #             "stages": [(0.0, 30.0), (0.0, 30.0), (0.0, 30.0), (0.0, 30.0), (0.0, 30.0)],
+    #             "steps_per_stage": 24000,  # 1000 iters × 24 steps
+    #         },
+    #     },
+    # )
 
     stiffness_range = CurrTerm(
         func=mdp_curr.modify_term_cfg,

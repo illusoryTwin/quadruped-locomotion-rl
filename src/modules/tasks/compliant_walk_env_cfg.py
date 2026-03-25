@@ -24,7 +24,7 @@ from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_force
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
-from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact
+from src.modules.rewards import track_lin_vel_xy_exp, track_ang_vel_z_exp, track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact, feet_air_time
 from src.modules.actions import EMAJointPositionActionCfg
 
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
@@ -33,11 +33,11 @@ from src.modules.curriculums import ramp_force_amplitude
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z, log_env0_compliance
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, log_env0_compliance
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
-from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
+from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
 from src.modules.curriculums import staged_force_ramp, multi_stage_stiffness
 
 
@@ -110,7 +110,8 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(400.0, 400.0)), # 30.0, 50.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(700.0, 700.0)), # 30.0, 50.0)),
+        # ranges=StiffnessCommandCfg.Ranges(kp=(400.0, 400.0)), # 30.0, 50.0)),
     )
 
     compliance = ComplianceCommandCfg(
@@ -208,26 +209,42 @@ class EventCfg:
         },
     )
 
+    # XY sinusoidal force on base, same interval as Z push
+    compliance_push_xy = EventTerm(
+        func=apply_sinusoidal_forces_xy_push,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_amplitude": [50.0], # [30.0],
+            "frequency": 0.5,
+        },
+    )
 
 
 @configclass
 class RewardsCfg:
     # Compliant position tracking (XYZ) — command + MSD deformation
     track_lin_vel_xy_exp = RewardTerm(
-        func=mdp.track_lin_vel_xy_exp, 
+        func=track_lin_vel_xy_exp, 
         weight=1.5, # 1.0, # 1.5, 
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
     track_ang_vel_z_exp = RewardTerm(
-        func=mdp.track_ang_vel_z_exp, 
+        func=track_ang_vel_z_exp, 
         weight=0.75, # 0.5, # 0.75, 
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
-    track_compliant_pos = RewardTerm(
+    track_compliant_pos_z = RewardTerm(
         func=track_compliant_base_pos_cmd_exp,
         weight=2.5,
-        params={"command_name": "base_position", "std":0.05}, #  0.04},
+        params={"command_name": "base_position", "std": 0.05},
     )
+    # track_compliant_pos_xy = RewardTerm(
+    #     func=track_compliant_base_xy_pos_cmd_exp,
+    #     weight=2.0,
+    #     params={"command_name": "base_position", "std": 0.05},
+    # )
 
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.075)
@@ -264,8 +281,18 @@ class RewardsCfg:
     # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) #-0.01)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.1) # -0.15) #-0.01)
 
+    feet_air_time = RewardTerm(
+        func=feet_air_time,
+        weight=0.75, #0.5, # 0.25,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "command_name": "base_velocity",
+            "threshold": 0.5,
+        },
+    )
 
-@configclass 
+
+@configclass
 class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     base_contact = DoneTerm(func=mdp.illegal_contact,
@@ -287,6 +314,20 @@ class CurriculumCfg:
             "modify_params": {
                 "initial": 0.0,
                 "final": 70.0,
+                "warmup_steps": 24000,   # 1000 iters × 24 steps
+                "ramp_steps": 24000,     # 1000 iters × 24 steps
+            },
+        },
+    )
+
+    force_amplitude_xy = CurrTerm(
+        func=mdp_curr.modify_term_cfg,
+        params={
+            "address": "events.compliance_push_xy.params.force_amplitude",
+            "modify_fn": ramp_force_amplitude,
+            "modify_params": {
+                "initial": 0.0,
+                "final": 30.0,
                 "warmup_steps": 24000,   # 1000 iters × 24 steps
                 "ramp_steps": 24000,     # 1000 iters × 24 steps
             },

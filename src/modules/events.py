@@ -1,4 +1,4 @@
-import torch
+git diff import torch
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.assets import Articulation
 
@@ -279,6 +279,85 @@ def apply_sinusoidal_forces_z(
 
     # Store for external logging
     env._compliance_push_fz = fz
+
+
+def apply_sinusoidal_forces_xy_push(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    force_amplitude: float | list[float] = 10.0,
+    frequency: float = 0.5,
+    on_duration: float = 2.0,
+    off_duration: float = 1.0,
+):
+    """Apply sinusoidal forces on X and Y axes only, with duty cycle.
+
+    Each environment gets independent random phases for X and Y, plus a
+    random offset into the duty cycle so on/off windows are desynchronized.
+
+    Args:
+        env: The environment instance.
+        env_ids: Environment indices.
+        asset_cfg: Asset and body configuration.
+        force_amplitude: Force amplitude in Newtons (same for X and Y).
+        frequency: Oscillation frequency in Hz.
+        on_duration: Seconds forces are applied per cycle.
+        off_duration: Seconds forces are zero per cycle.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
+
+    cycle_period = on_duration + off_duration
+
+    # Initialize phase buffers: independent phase per env, per body, for X and Y
+    if not hasattr(env, "_sin_force_xy_phases"):
+        env._sin_force_xy_phases = torch.rand(
+            (num_envs, num_bodies, 2), device=device
+        ) * 2 * torch.pi
+    if not hasattr(env, "_duty_cycle_xy_offset"):
+        env._duty_cycle_xy_offset = torch.rand(num_envs, device=device) * cycle_period
+
+    t = env.common_step_counter * env.step_dt
+
+    # Duty cycle mask: [num_envs, 1]
+    cycle_time = (t + env._duty_cycle_xy_offset) % cycle_period
+    on_mask = (cycle_time < on_duration).float().unsqueeze(-1)
+
+    if isinstance(force_amplitude, (list, tuple)):
+        amp = torch.tensor(force_amplitude, device=device).view(1, num_bodies)
+    else:
+        amp = force_amplitude
+
+    # Sinusoidal force for X and Y: [num_envs, num_bodies, 2]
+    fxy = amp.unsqueeze(-1) if isinstance(amp, torch.Tensor) and amp.dim() == 2 else amp
+    fxy = torch.stack([
+        amp * torch.sin(2 * torch.pi * frequency * t + env._sin_force_xy_phases[:, :, 0]),
+        amp * torch.sin(2 * torch.pi * frequency * t + env._sin_force_xy_phases[:, :, 1]),
+    ], dim=-1)  # [num_envs, num_bodies, 2]
+
+    # Apply duty cycle
+    fxy = fxy * on_mask.unsqueeze(-1)
+
+    # Build [num_envs, num_bodies, 3] with only X and Y components
+    forces = torch.zeros(num_envs, num_bodies, 3, device=device)
+    forces[:, :, 0] = fxy[:, :, 0]
+    forces[:, :, 1] = fxy[:, :, 1]
+    torques = torch.zeros_like(forces)
+
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )
+
+    # Store for external logging
+    env._compliance_push_fxy = fxy
 
 
 def apply_sinusoidal_forces_z_new(
