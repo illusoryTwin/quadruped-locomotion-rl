@@ -21,7 +21,26 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 
 from isaaclab.envs import ManagerBasedRLEnv
-from compliance.soft_compliance_manager_cfg import SoftComplianceManagerCfg
+from compliance.compliance_manager_cfg import ComplianceManagerCfg
+from modules.events import apply_sinusoidal_forces
+from modules.commands.stiffness_command import StiffnessCommandCfg
+
+def track_compliant_joint_targets_exp(
+    env: ManagerBasedRLEnv,
+    std: float = 0.1,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward for tracking MSD-deformed joint position targets.
+
+    Uses exponential kernel: exp(-||actual_pos - compliant_target||^2 / std^2)
+    Returns zero if compliance is not active.
+    """
+    if not hasattr(env, '_compliant_joint_targets') or env._compliant_joint_targets is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    asset = env.scene[asset_cfg.name]
+    error = asset.data.joint_pos - env._compliant_joint_targets
+    return torch.exp(-torch.sum(error * error, dim=1) / (std * std))
 
 
 def feet_air_time(
@@ -88,7 +107,7 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
     )
 
 
-@configclass 
+@configclass
 class CommandsCfg:
     base_velocity =  mdp.UniformVelocityCommandCfg(
         asset_name="robot",
@@ -99,6 +118,11 @@ class CommandsCfg:
             ang_vel_z=(-1.5, 1.5),
             heading=(-math.pi, math.pi)
         )
+    )
+
+    stiffness = StiffnessCommandCfg(
+        resampling_time_range=(5.0, 10.0),
+        ranges=StiffnessCommandCfg.Ranges(kp=(5.0, 20.0)),
     )
 
 
@@ -133,8 +157,12 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             noise=Unoise(n_min=-0.1, n_max=0.1)
         )
+        stiffness_cmd = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "stiffness"},
+        )
 
-    @configclass 
+    @configclass
     class CriticCfg(PolicyCfg):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.15, n_max=0.15), scale=1.0)
 
@@ -171,6 +199,64 @@ class EventCfg:
         },
     )
 
+    pull_robot = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="interval",
+        interval_range_s=(5.0, 5.5),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
+            "force_range": (-20.0, 20.0),
+            "torque_range": (-5.0, 5.0),
+        },
+    )
+
+    # Apply real physical forces - compliance manager will read these
+    push_robot = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="interval",
+        interval_range_s=(0.1, 0.5),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_range": (-10.0, 10.0),
+            "torque_range": (-3.0, 3.0),
+        },
+    )
+
+    # pull_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval",
+    #     interval_range_s=(3.0, 5.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*base"),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-3.0, 3.0),
+    #     },
+    # )
+
+    # # Apply real physical forces - compliance manager will read these
+    # push_robot = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="interval",
+    #     interval_range_s=(0.1, 2.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-3.0, 3.0),
+    #     },
+    # )
+
+    # Apply sinusoidal forces to monitored bodies every step
+    compliance_push = EventTerm(
+        func=apply_sinusoidal_forces,
+        mode="step",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["FL_calf", "FR_calf", "RL_calf", "RR_calf"]),
+            "force_amplitude": 10.0,
+            "frequency": 0.5,
+        },
+    )
+
+
 @configclass 
 class RewardsCfg:
     # -- task
@@ -187,20 +273,25 @@ class RewardsCfg:
     # -- penalties
     # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    track_compliant_targets = RewardTerm(
+        func=track_compliant_joint_targets_exp,
+        weight=0.75, # 1.5, # 0.5,
+        params={"std": 0.5}, # 0.25},
+    )
     dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
 
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2e-7)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
-    feet_air_time = RewardTerm(
-        func=feet_air_time,
-        weight=0.25,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": "base_velocity",
-            "threshold": 0.5,
-        },
-    )
+    # feet_air_time = RewardTerm(
+    #     func=feet_air_time,
+    #     weight=0.25,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+    #         "command_name": "base_velocity",
+    #         "threshold": 0.5,
+    #     },
+    # )_compute_compliance_targets
 
 
 @configclass
@@ -228,8 +319,9 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
         events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
 
-        compliance: SoftComplianceManagerCfg = SoftComplianceManagerCfg(
-            monitored_bodies=["base"], #, "FL_calf", "FR_calf", "RL_calf", "RR_calf"],
+        compliance: ComplianceManagerCfg = ComplianceManagerCfg(
+            enabled=True,
+            monitored_bodies=["FL_calf", "FR_calf", "RL_calf", "RR_calf"],
             stiffness_config={
                 "FL_hip_joint": 1.0,
                 "FL_thigh_joint": 1.0,
@@ -244,8 +336,8 @@ class UnitreeGo2WalkSoftEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "RR_thigh_joint": 1.0,
                 "RR_calf_joint": 0.8,
             },
-            dt=0.004,
-            base_stiffness=60.0,
+            dt=0.02, # 0.004,
+            base_stiffness=10.0, # 30.0, # 60.0,
             base_inertia=0.5,
         )
 
