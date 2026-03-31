@@ -98,6 +98,14 @@ fi
 # ---------------------------------------------------------------------------
 # Launch MuJoCo simulator
 # ---------------------------------------------------------------------------
+# Overlay custom MuJoCo files (perturbation support, force visualization)
+MUJOCO_OVERLAY="/workspace/quadruped-locomotion-rl/deploy/mujoco"
+MUJOCO_TARGET="/workspace/unitree_mujoco/simulate_python"
+if [ -d "$MUJOCO_OVERLAY" ]; then
+    echo "[entrypoint] Applying MuJoCo overlay from deploy/mujoco/..."
+    cp -v "$MUJOCO_OVERLAY"/*.py "$MUJOCO_TARGET"/
+fi
+
 echo "[entrypoint] Starting MuJoCo simulator..."
 cd /workspace/unitree_mujoco/simulate_python
 python unitree_mujoco.py &

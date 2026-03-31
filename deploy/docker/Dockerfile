@@ -2,7 +2,7 @@
 # Deploy/Test container: MuJoCo + PyTorch + Unitree SDK for policy testing
 # =============================================================================
 #
-# Build context: Projects/ directory (parent of quadruped-locomotion-rl/)
+# Build context: quadruped-locomotion-rl/ repo root
 #
 # Lightweight container for:
 #   - Running trained policies in MuJoCo simulation
@@ -78,7 +78,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # -----------------------------------------------------------------------------
 # Unitree SDK2 Python (DDS communication)
 # -----------------------------------------------------------------------------
-COPY unitree_robotics/unitree_sdk2_python/ ${UNITREE_SDK_PATH}
+ARG UNITREE_SDK2_PYTHON_REPO=https://github.com/unitreerobotics/unitree_sdk2_python.git
+RUN git clone --depth 1 ${UNITREE_SDK2_PYTHON_REPO} ${UNITREE_SDK_PATH}
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     cd ${UNITREE_SDK_PATH} && pip install -e .
@@ -86,7 +87,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # -----------------------------------------------------------------------------
 # Unitree MuJoCo simulator
 # -----------------------------------------------------------------------------
-COPY unitree_robotics/unitree_mujoco/ ${UNITREE_MUJOCO_PATH}
+ARG UNITREE_MUJOCO_REPO=https://github.com/unitreerobotics/unitree_mujoco.git
+RUN git clone --depth 1 ${UNITREE_MUJOCO_REPO} ${UNITREE_MUJOCO_PATH}
 
 # Install MuJoCo simulator Python dependencies if any
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -96,7 +98,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # -----------------------------------------------------------------------------
 # Quadruped RL repo (deploy/ is inside)
 # -----------------------------------------------------------------------------
-COPY quadruped-locomotion-rl/ ${QUADRUPED_RL_PATH}
+COPY . ${QUADRUPED_RL_PATH}
 
 # Install quadruped-locomotion-rl package if pyproject.toml exists
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -106,8 +108,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # -----------------------------------------------------------------------------
 # Entrypoint scripts
 # -----------------------------------------------------------------------------
-COPY quadruped-locomotion-rl/deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY quadruped-locomotion-rl/deploy/docker/entrypoint-policy.sh /usr/local/bin/entrypoint-policy.sh
+COPY deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY deploy/docker/entrypoint-policy.sh /usr/local/bin/entrypoint-policy.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-policy.sh
 
 # -----------------------------------------------------------------------------

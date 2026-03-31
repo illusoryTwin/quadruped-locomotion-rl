@@ -1,4 +1,4 @@
-git diff import torch
+import torch
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.assets import Articulation
 

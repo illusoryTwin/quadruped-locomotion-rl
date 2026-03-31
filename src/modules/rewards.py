@@ -2,6 +2,7 @@ import torch
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
+import isaaclab.utils.string as string_utils
 
 
 def ang_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
@@ -311,4 +312,102 @@ def feet_contact(
     net_forces = contact_sensor.data.net_forces_w_history[:, 0, sensor_cfg.body_ids, :]
     in_contact = net_forces.norm(dim=-1) > threshold  # [num_envs, num_feet]
     return in_contact.float().mean(dim=1)
+
+
+def joint_manual_limit(
+    env: ManagerBasedRLEnv,
+    bounds: dict[str, list[float]],
+    articulation_attribute: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    soft_limit_factor: float = 0.9,
+) -> torch.Tensor:
+    """Penalize joint values that exceed manually specified soft limits.
+
+    For each joint matched by ``bounds``, a soft limit region is computed as
+    ``mean ± (range * soft_limit_factor / 2)``.  Any value outside this region
+    contributes a linear penalty.
+
+    Args:
+        bounds: Mapping of joint-name regex to [lower, upper] limits.
+        articulation_attribute: Name of the data attribute to read (e.g. "joint_pos").
+        asset_cfg: Asset config with joint_names/joint_ids already resolved.
+        soft_limit_factor: Fraction of the full range used as the soft region.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    if not hasattr(asset.data, articulation_attribute):
+        raise KeyError(f"Articulation data has no attribute {articulation_attribute}")
+
+    index_list, _, value_list = string_utils.resolve_matching_names_values(
+        bounds, asset.joint_names
+    )
+    lower_limits = torch.tensor([v[0] for v in value_list], device=asset.device, dtype=torch.float32)
+    upper_limits = torch.tensor([v[1] for v in value_list], device=asset.device, dtype=torch.float32)
+
+    limit_range = (upper_limits - lower_limits) * soft_limit_factor
+    limit_mean = (upper_limits + lower_limits) / 2
+    upper_limits = limit_mean + limit_range / 2
+    lower_limits = limit_mean - limit_range / 2
+
+    values = getattr(asset.data, articulation_attribute)
+    out_of_limits = -(values[:, asset_cfg.joint_ids] - lower_limits).clip(max=0.0)
+    out_of_limits += (values[:, asset_cfg.joint_ids] - upper_limits).clip(min=0.0)
+    return -torch.sum(out_of_limits, dim=1)
+
+
+def diagonal_leg_symmetry_l1(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize asymmetry between diagonal leg pairs (FL↔RR, FR↔RL).
+
+    Works for both stance (all legs identical) and trot gait (diagonal legs in phase).
+    Hip joints use sum (left/right have opposite abduction sign), thigh/calf use difference.
+
+    Expects Go2 joint order: FL_hip, FL_thigh, FL_calf, FR_..., RL_..., RR_...
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    jp = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    # Joint order (grouped by type): FL_hip=0, FR_hip=1, RL_hip=2, RR_hip=3,
+    #   FL_thigh=4, FR_thigh=5, RL_thigh=6, RR_thigh=7,
+    #   FL_calf=8, FR_calf=9, RL_calf=10, RR_calf=11
+    fl_hip, fr_hip, rl_hip, rr_hip = jp[:, 0], jp[:, 1], jp[:, 2], jp[:, 3]
+    fl_thigh, fr_thigh, rl_thigh, rr_thigh = jp[:, 4], jp[:, 5], jp[:, 6], jp[:, 7]
+    fl_calf, fr_calf, rl_calf, rr_calf = jp[:, 8], jp[:, 9], jp[:, 10], jp[:, 11]
+
+    # Diagonal pair 1: FL ↔ RR
+    # Diagonal pair 2: FR ↔ RL
+    # Hip: opposite sign convention → penalize sum
+    asym_score = (fl_hip + rr_hip).abs() + (fr_hip + rl_hip).abs()
+    # Thigh & calf: same sign convention → penalize difference
+    asym_score = asym_score + (fl_thigh - rr_thigh).abs() + (fr_thigh - rl_thigh).abs()
+    asym_score = asym_score + (fl_calf - rr_calf).abs() + (fr_calf - rl_calf).abs()
+
+    return asym_score
+
+
+def all_leg_symmetry_l1(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize asymmetry across all four legs (for stance: all legs identical).
+
+    Flips right-side hip signs (opposite abduction convention), then penalizes
+    deviation from the mean across all 4 legs for each joint type.
+
+    Joint order (grouped by type): FL=0, FR=1, RL=2, RR=3 per group.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    jp = asset.data.joint_pos[:, asset_cfg.joint_ids]
+
+    # Hips: flip right-side sign so all legs share the same convention
+    hips = torch.stack([jp[:, 0], -jp[:, 1], jp[:, 2], -jp[:, 3]], dim=-1)
+    thighs = torch.stack([jp[:, 4], jp[:, 5], jp[:, 6], jp[:, 7]], dim=-1)
+    calfs = torch.stack([jp[:, 8], jp[:, 9], jp[:, 10], jp[:, 11]], dim=-1)
+
+    # Penalize deviation from mean across all 4 legs
+    asym_score = (hips - hips.mean(dim=-1, keepdim=True)).abs().sum(dim=-1)
+    asym_score = asym_score + (thighs - thighs.mean(dim=-1, keepdim=True)).abs().sum(dim=-1)
+    asym_score = asym_score + (calfs - calfs.mean(dim=-1, keepdim=True)).abs().sum(dim=-1)
+
+    return asym_score
 

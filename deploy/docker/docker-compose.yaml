@@ -13,9 +13,8 @@
 #
 # Source code is bind-mounted — code changes apply immediately without rebuilds.
 #
-# Required sibling repos (relative to this repo's parent directory):
-#   ../unitree_robotics/unitree_mujoco/
-#   ../unitree_robotics/unitree_sdk2_python/
+# Unitree dependencies (unitree_mujoco, unitree_sdk2_python) are cloned
+# automatically during docker build — no manual setup needed.
 
 x-gpu-deploy: &gpu-deploy
   resources:
@@ -31,8 +30,8 @@ services:
   # ===========================================================================
   quadruped-deploy:
     build:
-      context: ../../../
-      dockerfile: quadruped-locomotion-rl/deploy/docker/Dockerfile
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
     image: quadruped-deploy
     container_name: quadruped-deploy
     ipc: host
@@ -48,9 +47,6 @@ services:
       - type: bind
         source: ../../
         target: /workspace/quadruped-locomotion-rl
-      - type: bind
-        source: ../../../unitree_robotics/unitree_mujoco
-        target: /workspace/unitree_mujoco
       # Persistent volume for logs
       - type: volume
         source: deploy-logs
@@ -92,9 +88,6 @@ services:
       - type: bind
         source: ../../
         target: /workspace/quadruped-locomotion-rl
-      - type: bind
-        source: ../../../unitree_robotics/unitree_mujoco
-        target: /workspace/unitree_mujoco
       - type: volume
         source: deploy-logs
         target: /workspace/logs
