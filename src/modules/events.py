@@ -222,6 +222,82 @@ def apply_constant_force_z(
     )
 
 
+def apply_random_constant_force_z(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    force_amplitude: float | list[float] = 70.0,
+    hold_time_range: tuple[float, float] = (2.0, 6.0),
+):
+    """Apply a random constant Z force per env, held for a random duration then resampled.
+
+    Each environment independently samples a force from [-force_amplitude, +force_amplitude]
+    and a hold duration from hold_time_range. When the hold expires, both are resampled.
+
+    Args:
+        env: The environment instance.
+        env_ids: Environment indices.
+        asset_cfg: Asset and body configuration.
+        force_amplitude: Max force magnitude in Newtons. Force is sampled
+            uniformly from [-amplitude, +amplitude].
+        hold_time_range: (min_seconds, max_seconds) for how long each
+            force is held before resampling.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
+
+    if isinstance(force_amplitude, (list, tuple)):
+        amp = force_amplitude[0]
+    else:
+        amp = force_amplitude
+
+    # Initialize buffers on first call
+    if not hasattr(env, "_rand_force_z_values"):
+        env._rand_force_z_values = (2 * torch.rand(num_envs, device=device) - 1) * amp
+        env._rand_force_z_end_time = (
+            torch.rand(num_envs, device=device) * (hold_time_range[1] - hold_time_range[0])
+            + hold_time_range[0]
+        )
+        env._rand_force_z_start_time = torch.zeros(num_envs, device=device)
+
+    t = env.common_step_counter * env.step_dt
+
+    # Check which envs need resampling (hold expired)
+    elapsed = t - env._rand_force_z_start_time
+    resample_mask = elapsed >= env._rand_force_z_end_time
+    n_resample = resample_mask.sum().item()
+
+    if n_resample > 0:
+        env._rand_force_z_values[resample_mask] = (
+            (2 * torch.rand(n_resample, device=device) - 1) * amp
+        )
+        env._rand_force_z_end_time[resample_mask] = (
+            torch.rand(n_resample, device=device) * (hold_time_range[1] - hold_time_range[0])
+            + hold_time_range[0]
+        )
+        env._rand_force_z_start_time[resample_mask] = t
+
+    # Build force tensor
+    forces = torch.zeros(num_envs, num_bodies, 3, device=device)
+    forces[:, :, 2] = env._rand_force_z_values.unsqueeze(-1)
+    torques = torch.zeros_like(forces)
+
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )
+
+    # Store for external logging
+    env._compliance_push_fz = env._rand_force_z_values.unsqueeze(-1)
+
+
 def apply_sinusoidal_forces_z(
     env,
     env_ids: torch.Tensor,

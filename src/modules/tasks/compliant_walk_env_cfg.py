@@ -33,7 +33,7 @@ from src.modules.curriculums import ramp_force_amplitude
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, log_env0_compliance
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, apply_random_constant_force_z, log_env0_compliance
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
@@ -195,18 +195,30 @@ class EventCfg:
             "velocity_range": (-0.5, 0.5),
         }
     )
-    # Z-only sinusoidal force on base, resampled every 5-5.5s
+    # # Z-only sinusoidal force on base, resampled every 5-5.5s
+    # compliance_push = EventTerm(
+    #     func=apply_sinusoidal_forces_z,
+    #     mode="interval",
+    #     interval_range_s=(0.02, 0.02),
+    #     # interval_range_s=(5.0, 5.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [70.0], # [100.0],
+    #         # "force_amplitude": [50.0],
+    #         # "frequency": 0.3,
+    #         "frequency": 0.5,
+    #     },
+    # )
+
+    # Random constant Z force on base, held for 2-6s then resampled
     compliance_push = EventTerm(
-        func=apply_sinusoidal_forces_z,
+        func=apply_random_constant_force_z,
         mode="interval",
         interval_range_s=(0.02, 0.02),
-        # interval_range_s=(5.0, 5.5),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [70.0], # [100.0],
-            # "force_amplitude": [50.0],
-            # "frequency": 0.3,
-            "frequency": 0.5,
+            "force_amplitude": [70.0],
+            "hold_time_range": (2.0, 6.0),
         },
     )
 
@@ -307,11 +319,11 @@ class RewardsCfg:
 
     feet_air_time = RewardTerm(
         func=feet_air_time,
-        weight=0.75, #0.5, # 0.25,
+        weight=1.5, # 0.75, #0.5, # 0.25,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
-            "threshold": 0.5,
+            "threshold": 0.3, # 0.5,
         },
     )
 
