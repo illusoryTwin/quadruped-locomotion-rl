@@ -84,7 +84,7 @@ class CommandsCfg:
     )
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(800.0, 800.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(600.0, 600.0)), # 800.0, 800.0)),
     )
 
     compliance = ComplianceCommandCfg(

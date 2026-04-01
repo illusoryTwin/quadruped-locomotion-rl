@@ -39,6 +39,7 @@ from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
 from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
 from src.modules.curriculums import staged_force_ramp, multi_stage_stiffness
+from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2, joint_manual_limit, diagonal_leg_symmetry_l1, all_leg_symmetry_l1
 
 
 @configclass
@@ -209,17 +210,40 @@ class EventCfg:
         },
     )
 
-    # XY sinusoidal force on base, same interval as Z push
-    compliance_push_xy = EventTerm(
-        func=apply_sinusoidal_forces_xy_push,
-        mode="interval",
-        interval_range_s=(0.02, 0.02),
+    # # XY sinusoidal force on base, same interval as Z push
+    # compliance_push_xy = EventTerm(
+    #     func=apply_sinusoidal_forces_xy_push,
+    #     mode="interval",
+    #     interval_range_s=(0.02, 0.02),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [50.0], # [30.0],
+    #         "frequency": 0.5,
+    #     },
+    # )
+
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup", 
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [50.0], # [30.0],
-            "frequency": 0.5,
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"), 
+            "static_friction_range": (0.7, 0.9), 
+            "dynamic_friction_range": (0.5, 0.7),
+            "restitution_range": (0.0, 0.3), 
+            "num_buckets": 64, 
         },
     )
+
+    randomize_com = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup", 
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "mass_distribution_params": (0.8, 1.2), # (0.9, 1.1),
+            "operation": "scale",
+        },
+    )
+
 
 
 @configclass
@@ -291,6 +315,21 @@ class RewardsCfg:
         },
     )
 
+    diagonal_symmetry = RewardTerm(
+        func=diagonal_leg_symmetry_l1,
+        weight=-0.5,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    ".*_hip_joint",
+                    ".*_thigh_joint",
+                    ".*_calf_joint",
+                ],
+            ),
+        },
+    )
+
 
 @configclass
 class TerminationsCfg:
@@ -320,19 +359,19 @@ class CurriculumCfg:
         },
     )
 
-    force_amplitude_xy = CurrTerm(
-        func=mdp_curr.modify_term_cfg,
-        params={
-            "address": "events.compliance_push_xy.params.force_amplitude",
-            "modify_fn": ramp_force_amplitude,
-            "modify_params": {
-                "initial": 0.0,
-                "final": 30.0,
-                "warmup_steps": 24000,   # 1000 iters × 24 steps
-                "ramp_steps": 24000,     # 1000 iters × 24 steps
-            },
-        },
-    )
+    # force_amplitude_xy = CurrTerm(
+    #     func=mdp_curr.modify_term_cfg,
+    #     params={
+    #         "address": "events.compliance_push_xy.params.force_amplitude",
+    #         "modify_fn": ramp_force_amplitude,
+    #         "modify_params": {
+    #             "initial": 0.0,
+    #             "final": 30.0,
+    #             "warmup_steps": 24000,   # 1000 iters × 24 steps
+    #             "ramp_steps": 24000,     # 1000 iters × 24 steps
+    #         },
+    #     },
+    # )
 
 
 @configclass

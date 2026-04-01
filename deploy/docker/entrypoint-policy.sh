@@ -101,9 +101,14 @@ fi
 # Overlay custom MuJoCo files (perturbation support, force visualization)
 MUJOCO_OVERLAY="/workspace/quadruped-locomotion-rl/deploy/mujoco"
 MUJOCO_TARGET="/workspace/unitree_mujoco/simulate_python"
+SCENE_TARGET="/workspace/unitree_mujoco/unitree_robots/go2"
 if [ -d "$MUJOCO_OVERLAY" ]; then
     echo "[entrypoint] Applying MuJoCo overlay from deploy/mujoco/..."
     cp -v "$MUJOCO_OVERLAY"/*.py "$MUJOCO_TARGET"/
+    # Overlay custom scene XML if present
+    if [ -f "$MUJOCO_OVERLAY/scene.xml" ]; then
+        cp -v "$MUJOCO_OVERLAY/scene.xml" "$SCENE_TARGET/scene.xml"
+    fi
 fi
 
 echo "[entrypoint] Starting MuJoCo simulator..."
