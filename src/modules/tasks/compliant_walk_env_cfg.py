@@ -111,7 +111,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(700.0, 700.0)), # 30.0, 50.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(600.0, 800.0)), # 700.0, 700.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(400.0, 400.0)), # 30.0, 50.0)),
     )
 
@@ -282,8 +282,8 @@ class RewardsCfg:
     #     params={"command_name": "base_position", "std": 0.05},
     # )
 
-    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.075)
+    ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.075)
 
     illegal_contact = RewardTerm(
         func=mdp.illegal_contact,
@@ -291,12 +291,7 @@ class RewardsCfg:
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base", ".*_thigh"]),
                 "threshold": 1.0},
     )
-    # feet_on_ground = RewardTerm(
-    #     func=feet_contact,
-    #     weight=0.5,
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-    #             "threshold": 1.0},
-    # )
+
     flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
     joint_default_pos = RewardTerm(
         func=mdp.joint_deviation_l1,
@@ -304,17 +299,8 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
     
-    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.15) # -0.3) # -0.25) # -0.15) #-0.01)
-    # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7) # -5e-7)
-    # dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7)
-    
-    # # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.25) # -0.25) # -0.15) #-0.01)
-    # # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
-    # # dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2.5e-6) # -2.5e-6) # -5e-7)
-    
     dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) # -1e-7)
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7) # -2e-7)
-    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) #-0.01)
     action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.1) # -0.15) #-0.01)
 
     feet_air_time = RewardTerm(
