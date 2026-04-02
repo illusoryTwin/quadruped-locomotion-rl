@@ -111,7 +111,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(600.0, 800.0)), # 700.0, 700.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(600.0, 1000.0)), # 700.0, 700.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(400.0, 400.0)), # 30.0, 50.0)),
     )
 
@@ -305,7 +305,7 @@ class RewardsCfg:
 
     feet_air_time = RewardTerm(
         func=feet_air_time,
-        weight=1.5, # 0.75, #0.5, # 0.25,
+        weight=2.5, # 1.5, # 0.75, #0.5, # 0.25,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
