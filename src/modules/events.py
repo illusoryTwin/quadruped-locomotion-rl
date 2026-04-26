@@ -298,6 +298,84 @@ def apply_random_constant_force_z(
     env._compliance_push_fz = env._rand_force_z_values.unsqueeze(-1)
 
 
+def apply_random_constant_force_xy(
+    env,
+    env_ids: torch.Tensor,
+    asset_cfg: SceneEntityCfg,
+    force_amplitude: float | list[float] = 30.0,
+    hold_time_range: tuple[float, float] = (2.0, 6.0),
+):
+    """Apply random constant X and Y forces per env, held for a random duration then resampled.
+
+    Each environment independently samples Fx and Fy from [-force_amplitude, +force_amplitude]
+    and a hold duration from hold_time_range. When the hold expires, force components
+    and the hold duration are resampled together.
+
+    Args:
+        env: The environment instance.
+        env_ids: Environment indices.
+        asset_cfg: Asset and body configuration.
+        force_amplitude: Max force magnitude in Newtons. Fx and Fy are each sampled
+            uniformly from [-amplitude, +amplitude].
+        hold_time_range: (min_seconds, max_seconds) for how long each
+            force is held before resampling.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    device = asset.device
+    num_envs = env.num_envs
+    num_bodies = (
+        len(asset_cfg.body_ids)
+        if isinstance(asset_cfg.body_ids, list)
+        else asset.num_bodies
+    )
+
+    if isinstance(force_amplitude, (list, tuple)):
+        amp = force_amplitude[0]
+    else:
+        amp = force_amplitude
+
+    # Initialize buffers on first call
+    if not hasattr(env, "_rand_force_xy_values"):
+        env._rand_force_xy_values = (2 * torch.rand(num_envs, 2, device=device) - 1) * amp
+        env._rand_force_xy_end_time = (
+            torch.rand(num_envs, device=device) * (hold_time_range[1] - hold_time_range[0])
+            + hold_time_range[0]
+        )
+        env._rand_force_xy_start_time = torch.zeros(num_envs, device=device)
+
+    t = env.common_step_counter * env.step_dt
+
+    # Check which envs need resampling (hold expired)
+    elapsed = t - env._rand_force_xy_start_time
+    resample_mask = elapsed >= env._rand_force_xy_end_time
+    n_resample = resample_mask.sum().item()
+
+    if n_resample > 0:
+        env._rand_force_xy_values[resample_mask] = (
+            (2 * torch.rand(n_resample, 2, device=device) - 1) * amp
+        )
+        env._rand_force_xy_end_time[resample_mask] = (
+            torch.rand(n_resample, device=device) * (hold_time_range[1] - hold_time_range[0])
+            + hold_time_range[0]
+        )
+        env._rand_force_xy_start_time[resample_mask] = t
+
+    # Build force tensor: broadcast per-env XY force across bodies
+    forces = torch.zeros(num_envs, num_bodies, 3, device=device)
+    forces[:, :, 0] = env._rand_force_xy_values[:, 0:1]
+    forces[:, :, 1] = env._rand_force_xy_values[:, 1:2]
+    torques = torch.zeros_like(forces)
+
+    asset.set_external_force_and_torque(
+        forces,
+        torques,
+        body_ids=asset_cfg.body_ids,
+    )
+
+    # Store for external logging
+    env._compliance_push_fxy = env._rand_force_xy_values
+
+
 def apply_sinusoidal_forces_z(
     env,
     env_ids: torch.Tensor,

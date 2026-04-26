@@ -79,6 +79,7 @@ services:
       - DISPLAY=${DISPLAY}
       - NVIDIA_DRIVER_CAPABILITIES=all
       - POLICY_PATH=${POLICY_PATH:-}
+      - POLICY_SOURCE=${POLICY_SOURCE:-deploy}
       - DURATION=${DURATION:-120}
       - CMD_ARGS=${CMD_ARGS:-}
     volumes:

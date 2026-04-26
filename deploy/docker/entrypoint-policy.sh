@@ -19,6 +19,7 @@
 #   DDS_INTERFACE  - network interface (default: lo)
 #   DDS_DOMAIN     - DDS domain ID (default: 1)
 #   KEYBOARD       - set to 1 to enable WASD velocity control
+#   POLICY_SOURCE  - "deploy" (default) or "logs" to control resolution priority
 
 set -e
 
@@ -32,6 +33,7 @@ DDS_DOMAIN="${DDS_DOMAIN:-1}"
 DURATION="${DURATION:-120}"
 CMD_ARGS="${CMD_ARGS:-}"
 KEYBOARD="${KEYBOARD:-0}"
+POLICY_SOURCE="${POLICY_SOURCE:-deploy}"
 
 # ---------------------------------------------------------------------------
 # Parse task name
@@ -66,30 +68,48 @@ CONFIG_PATH="${CONFIGS_DIR}/${DEPLOY_CONFIG}.yaml"
 # ---------------------------------------------------------------------------
 # Resolve policy path (auto-find latest run, or use override)
 # ---------------------------------------------------------------------------
+resolve_from_deploy() {
+    local match
+    match=$(ls -1d "$DEPLOY_POLICIES/${EXPERIMENT_NAME}"* 2>/dev/null | sort -r | head -1)
+    if [ -n "$match" ] && [ -f "$match/policy.pt" ]; then
+        POLICY_PATH="$match/policy.pt"
+        echo "[entrypoint] Found deploy policy: $POLICY_PATH"
+        return 0
+    fi
+    return 1
+}
+
+resolve_from_logs() {
+    local experiment_dir="${LOGS_ROOT}/${EXPERIMENT_NAME}"
+    if [ ! -d "$experiment_dir" ]; then
+        return 1
+    fi
+    local latest_run
+    latest_run=$(ls -1 "$experiment_dir" | sort -r | head -1)
+    local candidate="${experiment_dir}/${latest_run}/exported/policy.pt"
+    if [ -f "$candidate" ]; then
+        POLICY_PATH="$candidate"
+        echo "[entrypoint] Found logs policy: $POLICY_PATH"
+        return 0
+    fi
+    return 1
+}
+
 if [ -n "$POLICY_PATH" ]; then
     echo "[entrypoint] Using override POLICY_PATH=$POLICY_PATH"
-else
-    # 1) Check deploy/policies/ first (curated, committed policies)
-    DEPLOY_MATCH=$(ls -1d "$DEPLOY_POLICIES/${EXPERIMENT_NAME}"* 2>/dev/null | sort -r | head -1)
-    if [ -n "$DEPLOY_MATCH" ] && [ -f "$DEPLOY_MATCH/policy.pt" ]; then
-        POLICY_PATH="$DEPLOY_MATCH/policy.pt"
-        echo "[entrypoint] Found deploy policy: $POLICY_PATH"
-    else
-        # 2) Fall back to logs/ (local training results)
-        EXPERIMENT_DIR="${LOGS_ROOT}/${EXPERIMENT_NAME}"
-        if [ ! -d "$EXPERIMENT_DIR" ]; then
-            echo "[entrypoint] ERROR: No policy found in deploy/policies/ or logs/"
-            echo "[entrypoint] Either copy a policy to deploy/policies/ or train: python scripts/train.py --task=$TASK_NAME"
+elif [ "$POLICY_SOURCE" = "logs" ]; then
+    if ! resolve_from_logs; then
+        if ! resolve_from_deploy; then
+            echo "[entrypoint] ERROR: No policy found in logs/ or deploy/policies/"
+            echo "[entrypoint] Train one first: python scripts/train.py --task=$TASK_NAME"
             exit 1
         fi
-
-        # Find latest run directory (by name, timestamps sort lexicographically)
-        LATEST_RUN=$(ls -1 "$EXPERIMENT_DIR" | sort -r | head -1)
-        POLICY_PATH="${EXPERIMENT_DIR}/${LATEST_RUN}/exported/policy.pt"
-
-        if [ ! -f "$POLICY_PATH" ]; then
-            echo "[entrypoint] ERROR: No exported policy at $POLICY_PATH"
-            echo "[entrypoint] Training may still be in progress (no checkpoint exported yet)."
+    fi
+else
+    if ! resolve_from_deploy; then
+        if ! resolve_from_logs; then
+            echo "[entrypoint] ERROR: No policy found in deploy/policies/ or logs/"
+            echo "[entrypoint] Either copy a policy to deploy/policies/ or train: python scripts/train.py --task=$TASK_NAME"
             exit 1
         fi
     fi

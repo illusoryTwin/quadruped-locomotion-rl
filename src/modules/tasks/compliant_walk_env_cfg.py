@@ -33,7 +33,7 @@ from src.modules.curriculums import ramp_force_amplitude
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, apply_random_constant_force_z, log_env0_compliance
+from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, apply_random_constant_force_z, apply_random_constant_force_xy, log_env0_compliance
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
@@ -110,7 +110,8 @@ class CommandsCfg:
     )
 
     stiffness = StiffnessCommandCfg(
-        resampling_time_range=(5.0, 5.0),
+        resampling_time_range=(10.0, 10.0),
+        # resampling_time_range=(5.0, 5.0),
         ranges=StiffnessCommandCfg.Ranges(kp=(600.0, 1000.0)), # 700.0, 700.0)),
         # ranges=StiffnessCommandCfg.Ranges(kp=(400.0, 400.0)), # 30.0, 50.0)),
     )
@@ -162,7 +163,7 @@ class ObservationsCfg:
 
     @configclass 
     class CriticCfg(PolicyCfg):
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         cartesian_deformation = ObsTerm(func=base_cartesian_deformation)
 
     policy = PolicyCfg()
@@ -222,17 +223,34 @@ class EventCfg:
         },
     )
 
-    # # XY sinusoidal force on base, same interval as Z push
-    # compliance_push_xy = EventTerm(
-    #     func=apply_sinusoidal_forces_xy_push,
-    #     mode="interval",
-    #     interval_range_s=(0.02, 0.02),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_amplitude": [50.0], # [30.0],
-    #         "frequency": 0.5,
-    #     },
-    # )
+    # Random constant XY force on base, held for 2-6s then resampled
+    compliance_push_xy = EventTerm(
+        func=apply_random_constant_force_xy,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_amplitude": [30.0],
+            "hold_time_range": (2.0, 6.0),
+        },
+    )
+
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-1.0, 1.0), "y": (-1.0, 1.0)}},
+    )
+
+    randomize_com = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup", 
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "mass_distribution_params": (0.8, 1.2), # (0.9, 1.1),
+            "operation": "scale",
+        },
+    )
 
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
@@ -243,16 +261,6 @@ class EventCfg:
             "dynamic_friction_range": (0.5, 0.7),
             "restitution_range": (0.0, 0.3), 
             "num_buckets": 64, 
-        },
-    )
-
-    randomize_com = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup", 
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "mass_distribution_params": (0.8, 1.2), # (0.9, 1.1),
-            "operation": "scale",
         },
     )
 
@@ -357,19 +365,19 @@ class CurriculumCfg:
         },
     )
 
-    # force_amplitude_xy = CurrTerm(
-    #     func=mdp_curr.modify_term_cfg,
-    #     params={
-    #         "address": "events.compliance_push_xy.params.force_amplitude",
-    #         "modify_fn": ramp_force_amplitude,
-    #         "modify_params": {
-    #             "initial": 0.0,
-    #             "final": 30.0,
-    #             "warmup_steps": 24000,   # 1000 iters × 24 steps
-    #             "ramp_steps": 24000,     # 1000 iters × 24 steps
-    #         },
-    #     },
-    # )
+    force_amplitude_xy = CurrTerm(
+        func=mdp_curr.modify_term_cfg,
+        params={
+            "address": "events.compliance_push_xy.params.force_amplitude",
+            "modify_fn": ramp_force_amplitude,
+            "modify_params": {
+                "initial": 0.0,
+                "final": 30.0,
+                "warmup_steps": 24000,   # 1000 iters × 24 steps
+                "ramp_steps": 24000,     # 1000 iters × 24 steps
+            },
+        },
+    )
 
 
 @configclass
