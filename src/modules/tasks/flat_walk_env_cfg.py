@@ -204,7 +204,7 @@ class RewardsCfg:
                 "threshold": 1.0},
     )
 
-    flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
+    # flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
     joint_default_pos = RewardTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.01, # -0.05, # -0.08, # -0.1, # -0.075, 
