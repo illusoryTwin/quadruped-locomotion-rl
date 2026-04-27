@@ -19,6 +19,7 @@ from isaaclab.sensors import RayCasterCfg, ContactSensorCfg, patterns
 from isaaclab.managers import RewardTermCfg as RewardTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
+from src.modules.rewards import ang_vel_z_l2, lin_vel_xy_l2, joint_manual_limit, diagonal_leg_symmetry_l1, all_leg_symmetry_l1
 
 from isaaclab.envs import ManagerBasedRLEnv
 from src.modules.rewards import feet_air_time
@@ -135,7 +136,7 @@ class EventCfg:
                 "pitch": (-0.5, 0.5),
                 "yaw": (-0.5, 0.5),
             },
-        },
+        }
     )
 
     reset_robot_joints = EventTerm(
@@ -146,6 +147,36 @@ class EventCfg:
             "velocity_range": (-0.5, 0.5),
         },
     )
+    
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-1.0, 1.0), "y": (-1.0, 1.0)}},
+    )
+
+    randomize_com = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup", 
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "mass_distribution_params": (0.8, 1.2), # (0.9, 1.1),
+            "operation": "scale",
+        },
+    )
+
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup", 
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"), 
+            "static_friction_range": (0.7, 0.9), 
+            "dynamic_friction_range": (0.5, 0.7),
+            "restitution_range": (0.0, 0.3), 
+            "num_buckets": 64, 
+        },
+    )
+
 
 @configclass 
 class RewardsCfg:
@@ -160,9 +191,9 @@ class RewardsCfg:
         weight=0.75, 
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
-    # -- penalties
-    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-2.0) # -0.1)
+    ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     # dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-7)
     # dof_torques_l2 = RewardTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     
@@ -181,28 +212,69 @@ class RewardsCfg:
     )
 
     dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-1e-5) #-1e-7)
-    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) # -0.01)
-    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
+    dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) #-1e-7)
+    # # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.05) # -0.01)
+    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.01)
+    # dof_acc_l2 = RewardTerm(func=mdp.joint_acc_l2, weight=-5e-7) # -2e-7)
+
+    action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.1) #-0.01)
+    # action_rate_l2 = RewardTerm(func=mdp.action_rate_l2, weight=-0.1) # -0.15) #-0.01)
+
+
+    # feet_air_time = RewardTerm(
+    #    func=feet_air_time,
+    #    weight=1.5, # 2.5, # 1.5, # 0.75, #0.5, # 0.25,
+    #    params={
+    #        "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+    #        "command_name": "base_velocity",
+    #        "threshold": 0.3, # 0.5,
+    #    },
+    #)
 
     feet_air_time = RewardTerm(
         func=feet_air_time,
-        weight=0.25, # 0.125, # 0.25,
+        weight=0.5, # 2.5, # 1.5, # 0.75, #0.5, # 0.25,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
             "threshold": 0.5,
         },
     )
-    # feet_air_time = RewTerm(
-    #     func=mdp.feet_air_time,
-    #     weight=0.125,
+
+
+    # diagonal_symmetry = RewardTerm(
+    #     func=diagonal_leg_symmetry_l1,
+    #     weight=-0.5,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot",
+    #             joint_names=[
+    #                 ".*_hip_joint",
+    #                 ".*_thigh_joint",
+    #                 ".*_calf_joint",
+    #             ],
+    #         ),
+    #     },
+    # )
+
+    # feet_air_time = RewardTerm(
+    #     func=feet_air_time,
+    #     weight=0.25, # 0.125, # 0.25,
     #     params={
     #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
     #         "command_name": "base_velocity",
     #         "threshold": 0.5,
     #     },
     # )
+    # # feet_air_time = RewTerm(
+    # #     func=mdp.feet_air_time,
+    # #     weight=0.125,
+    # #     params={
+    # #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+    # #         "command_name": "base_velocity",
+    # #         "threshold": 0.5,
+    # #     },
+    # # )
 
 @configclass
 class TerminationsCfg:
