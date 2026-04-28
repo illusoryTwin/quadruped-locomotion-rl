@@ -87,8 +87,8 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     base_position = BasePositionCommandCfg(
-        # resampling_time_range=(10.0, 10.0),
-        resampling_time_range=(7.0, 7.0),
+        resampling_time_range=(10.0, 10.0),
+        # resampling_time_range=(7.0, 7.0),
         ranges=BasePositionCommandCfg.Ranges(
             x=(0.0, 0.0),
             y=(0.0, 0.0),
@@ -196,44 +196,6 @@ class EventCfg:
             "velocity_range": (-0.5, 0.5),
         }
     )
-    # # Z-only sinusoidal force on base, resampled every 5-5.5s
-    # compliance_push = EventTerm(
-    #     func=apply_sinusoidal_forces_z,
-    #     mode="interval",
-    #     interval_range_s=(0.02, 0.02),
-    #     # interval_range_s=(5.0, 5.5),
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-    #         "force_amplitude": [70.0], # [100.0],
-    #         # "force_amplitude": [50.0],
-    #         # "frequency": 0.3,
-    #         "frequency": 0.5,
-    #     },
-    # )
-
-    # Random constant Z force on base, held for 2-6s then resampled
-    compliance_push = EventTerm(
-        func=apply_random_constant_force_z,
-        mode="interval",
-        interval_range_s=(0.02, 0.02),
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [70.0],
-            "hold_time_range": (2.0, 6.0),
-        },
-    )
-
-    # Random constant XY force on base, held for 2-6s then resampled
-    compliance_push_xy = EventTerm(
-        func=apply_random_constant_force_xy,
-        mode="interval",
-        interval_range_s=(0.02, 0.02),
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [30.0],
-            "hold_time_range": (2.0, 6.0),
-        },
-    )
 
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
@@ -264,6 +226,44 @@ class EventCfg:
         },
     )
 
+    # # Z-only sinusoidal force on base, resampled every 5-5.5s
+    # compliance_push = EventTerm(
+    #     func=apply_sinusoidal_forces_z,
+    #     mode="interval",
+    #     interval_range_s=(0.02, 0.02),
+    #     # interval_range_s=(5.0, 5.5),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [70.0], # [100.0],
+    #         # "force_amplitude": [50.0],
+    #         # "frequency": 0.3,
+    #         "frequency": 0.5,
+    #     },
+    # )
+
+    # Random constant Z force on base, held for 2-6s then resampled
+    compliance_push = EventTerm(
+        func=apply_random_constant_force_z,
+        mode="interval",
+        interval_range_s=(10.0, 15.0), # 0.02, 0.02),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_amplitude": [70.0],
+            "hold_time_range": (2.0, 6.0),
+        },
+    )
+
+    # # Random constant XY force on base, held for 2-6s then resampled
+    # compliance_push_xy = EventTerm(
+    #     func=apply_random_constant_force_xy,
+    #     mode="interval",
+    #     interval_range_s=(0.02, 0.02),
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [30.0],
+    #         "hold_time_range": (2.0, 6.0),
+    #     },
+    # )
 
 
 @configclass
@@ -290,8 +290,10 @@ class RewardsCfg:
     #     params={"command_name": "base_position", "std": 0.05},
     # )
 
-    ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.075)
+    # ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    # lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.075)
+    lin_vel_z_l2 = RewardTerm(func=mdp.lin_vel_z_l2, weight=-0.2) # -2.0) # -0.1)
+    ang_vel_xy_l2 = RewardTerm(func=mdp.ang_vel_xy_l2, weight=-0.1) # -0.05)
 
     illegal_contact = RewardTerm(
         func=mdp.illegal_contact,
@@ -300,7 +302,7 @@ class RewardsCfg:
                 "threshold": 1.0},
     )
 
-    flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
+    # flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
     joint_default_pos = RewardTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.08, # -0.1, # -0.075, 
@@ -365,19 +367,19 @@ class CurriculumCfg:
         },
     )
 
-    force_amplitude_xy = CurrTerm(
-        func=mdp_curr.modify_term_cfg,
-        params={
-            "address": "events.compliance_push_xy.params.force_amplitude",
-            "modify_fn": ramp_force_amplitude,
-            "modify_params": {
-                "initial": 0.0,
-                "final": 30.0,
-                "warmup_steps": 24000,   # 1000 iters × 24 steps
-                "ramp_steps": 24000,     # 1000 iters × 24 steps
-            },
-        },
-    )
+    # force_amplitude_xy = CurrTerm(
+    #     func=mdp_curr.modify_term_cfg,
+    #     params={
+    #         "address": "events.compliance_push_xy.params.force_amplitude",
+    #         "modify_fn": ramp_force_amplitude,
+    #         "modify_params": {
+    #             "initial": 0.0,
+    #             "final": 30.0,
+    #             "warmup_steps": 24000,   # 1000 iters × 24 steps
+    #             "ramp_steps": 24000,     # 1000 iters × 24 steps
+    #         },
+    #     },
+    # )
 
 
 @configclass
