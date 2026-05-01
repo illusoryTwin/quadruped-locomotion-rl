@@ -21,7 +21,7 @@ import isaaclab.envs.mdp as mdp_curr
 
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
-from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, log_env0_compliance
+from src.modules.events import apply_random_constant_force_z, apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, log_env0_compliance
 # from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z, log_env0_compliance
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
@@ -164,19 +164,6 @@ class EventCfg:
             "velocity_range": (-0.5, 0.5),
         }
     )
-    # Z-only sinusoidal force on base, applied every step for smooth sinusoid
-    compliance_push = EventTerm(
-        func=apply_sinusoidal_forces_z,
-        mode="interval",
-        interval_range_s=(0.02, 0.02),  # every RL step
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [70.0], 
-            "frequency": 0.5,
-            # "on_duration": 1e6,  # effectively no off phase
-            # "off_duration": 0.0,
-        },
-    )
 
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
@@ -200,7 +187,33 @@ class EventCfg:
         },
     )
 
-    
+    # # Z-only sinusoidal force on base, applied every step for smooth sinusoid
+    # compliance_push = EventTerm(
+    #     func=apply_sinusoidal_forces_z,
+    #     mode="interval",
+    #     interval_range_s=(0.02, 0.02),  # every RL step
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+    #         "force_amplitude": [70.0], 
+    #         "frequency": 0.5,
+    #         # "on_duration": 1e6,  # effectively no off phase
+    #         # "off_duration": 0.0,
+    #     },
+    # )
+
+    # Random constant Z force on base, held for 2-6s then resampled
+    compliance_push = EventTerm(
+        func=apply_random_constant_force_z,
+        mode="interval",
+        interval_range_s=(5.0, 8.0), # (10.0, 15.0), # 0.02, 0.02),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_amplitude": [70.0],
+            "hold_time_range": (2.0, 6.0),
+        },
+    )
+
+
     # # XY sinusoidal force on base, same interval as Z push
     # compliance_push_xy = EventTerm(
     #     func=apply_sinusoidal_forces_xy_push,
@@ -212,17 +225,6 @@ class EventCfg:
     #         "frequency": 0.5,
     #     },
     # )
-
-
-    # Log env[0] force & deformation every step
-    env0_logger = EventTerm(
-        func=log_env0_compliance,
-        mode="interval",
-        interval_range_s=(0.02, 0.02),
-        params={
-            "log_path": "env0_compliance_log.csv",
-        },
-    )
 
 
 @configclass
