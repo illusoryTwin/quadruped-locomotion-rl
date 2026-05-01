@@ -313,6 +313,49 @@ def feet_contact(
     in_contact = net_forces.norm(dim=-1) > threshold  # [num_envs, num_feet]
     return in_contact.float().mean(dim=1)
 
+# Default Go2 URDF/MJCF joint limits
+GO2_XML_JOINT_POS_LIMITS: dict[str, list[float]] = {
+    ".*_hip_joint": [-1.0472, 1.0472],
+    ".*_thigh_joint": [-1.5708, 3.4907],
+    ".*_calf_joint": [-2.7227, -0.83776],
+}
+
+
+def joint_pos_limit(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    soft_limit_factor: float = 1.0,
+    limit_ranges: dict[str, list[float]] | None = None,
+) -> torch.Tensor:
+    """Penalize joint positions outside manual limits (see GO2_XML_JOINT_POS_LIMITS default)."""
+    limits_map = GO2_XML_JOINT_POS_LIMITS if limit_ranges is None else limit_ranges
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    joint_indices, _, value_list = string_utils.resolve_matching_names_values(
+        limits_map, asset.joint_names
+    )
+
+    lower_limits = torch.tensor([v[0] for v in value_list], device=asset.device, dtype=torch.float32)
+    upper_limits = torch.tensor([v[1] for v in value_list], device=asset.device, dtype=torch.float32)
+    limit_range = (upper_limits - lower_limits) * soft_limit_factor
+    limit_mean = (upper_limits + lower_limits) / 2
+    upper_soft = limit_mean + limit_range / 2
+    lower_soft = limit_mean - limit_range / 2
+
+    idx = torch.tensor(joint_indices, device=asset.device, dtype=torch.long)
+    jp = asset.data.joint_pos[:, idx]
+    out_of_limits = -(jp - lower_soft).clip(max=0.0)
+    out_of_limits += (jp - upper_soft).clip(min=0.0)
+    # print(out_of_limits)
+    return -torch.sum(out_of_limits, dim=1)
+    
+    #values = getattr(asset.data, articulation_attribute)
+    #out_of_limits = -(values[:, asset_cfg.joint_ids] - lower_limits).clip(max=0.0)
+    #out_of_limits += (values[:, asset_cfg.joint_ids] - upper_limits).clip(min=0.0)
+    #print(out_of_limits)
+    #return -torch.sum(out_of_limits, dim=1)
+
+
 
 def joint_manual_limit(
     env: ManagerBasedRLEnv,
