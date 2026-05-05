@@ -14,6 +14,19 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
+def discrete_kp_values(lo: float, hi: float, step: float) -> list[float]:
+    if step <= 0:
+        raise ValueError("discrete_step must be positive")
+    if lo > hi:
+        lo, hi = hi, lo
+    span = hi - lo
+    n = int(round(span / step))
+    tol = 1e-5 * max(abs(lo), abs(hi), 1.0)
+    if abs(span - n * step) > tol:
+        raise ValueError("Stiffness kp range width must be an integer multiple of discrete_step")
+    return [lo + float(i) * step for i in range(n + 1)]
+
+
 class StiffnessCommand(CommandTerm):
     """Command term that samples base stiffness (kp) uniformly from a range.
 
@@ -26,6 +39,12 @@ class StiffnessCommand(CommandTerm):
     def __init__(self, cfg: StiffnessCommandCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
         self.stiffness_command = torch.zeros(self.num_envs, 1, device=self.device)
+        lo, hi = cfg.ranges.kp
+        if cfg.discrete_step is not None:
+            values = discrete_kp_values(lo, hi, cfg.discrete_step)
+            self._kp_grid = torch.tensor(values, device=self.device, dtype=torch.float32)
+        else:
+            self._kp_grid = None
 
     @property
     def command(self) -> torch.Tensor:
@@ -33,8 +52,15 @@ class StiffnessCommand(CommandTerm):
         return self.stiffness_command
 
     def _resample_command(self, env_ids: Sequence[int]):
-        r = torch.empty(len(env_ids), device=self.device)
-        self.stiffness_command[env_ids, 0] = r.uniform_(*self.cfg.ranges.kp)
+        n = len(env_ids)
+        if n == 0:
+            return
+        if self._kp_grid is not None:
+            idx = torch.randint(0, self._kp_grid.numel(), (n,), device=self.device)
+            self.stiffness_command[env_ids, 0] = self._kp_grid[idx]
+        else:
+            r = torch.empty(n, device=self.device)
+            self.stiffness_command[env_ids, 0] = r.uniform_(*self.cfg.ranges.kp)
 
     def _update_command(self):
         pass
@@ -51,9 +77,10 @@ class StiffnessCommandCfg(CommandTermCfg):
 
     @configclass
     class Ranges:
-        """Ranges for stiffness sampling."""
+        """Ranges for base stiffness sampling."""
 
         kp: tuple[float, float] = (5.0, 20.0)
         """Range for base stiffness [min, max]."""
 
     ranges: Ranges = Ranges()
+    discrete_step: float | None = None
