@@ -4,6 +4,8 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 import isaaclab.utils.string as string_utils
 
+from src.compliance.utils.dynamics import get_wrench
+
 
 def ang_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize z-axis base angular velocity using L2 squared kernel."""
@@ -24,6 +26,52 @@ def base_cartesian_deformation(env: ManagerBasedRLEnv) -> torch.Tensor:
         if msd is not None:
             return msd.state['x_def'][:, 0:3]
     return torch.zeros(env.num_envs, 3, device=env.device)
+
+def track_stiffness_deformation_force_ratio(
+    env: ManagerBasedRLEnv,
+    stiffness_command_name: str,
+    compliance_command_name: str,
+    force_floor: float = 1e-5,
+    stiffness_floor: float = 1e-6,
+) -> torch.Tensor:
+    """Penalize deviation from the scalar Hooke relation ||x_def|| / ||F|| ≈ 1 / k_cmd.
+
+    x_def is the MSD task-space deformation (same state as ComplianceManager). F is the
+    stacked external force vector on compliant bodies in world frame, flattened in the
+    same order as ComplianceManager.compute. k_cmd is the commanded base stiffness.
+
+    Returns | ||x_def|| / max(||F||, force_floor) - 1 / max(k_cmd, stiffness_floor) |.
+    Use a negative weight in RewardTermCfg so lower deviation increases the weighted sum.
+
+    compliance_command_name is required so the reward is only used when that command term
+    exists (get_term validates wiring).
+    """
+    env.command_manager.get_term(compliance_command_name)
+    if not hasattr(env, "compliance_manager") or env.compliance_manager is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    msd = env.compliance_manager._msd_system
+    if msd is None or msd.state["x_def"].shape[1] == 0:
+        return torch.zeros(env.num_envs, device=env.device)
+    stiffness = env.command_manager.get_command(stiffness_command_name)
+    k_cmd = stiffness[:, 0].clamp(min=stiffness_floor)
+    deformations = msd.state["x_def"]
+    x_norm = torch.linalg.norm(deformations, dim=1, dtype=torch.float32)
+    robot = env.scene[env.compliance_manager.cfg.robot_name]
+    bodies = env.compliance_manager._compliant_body_names
+    wrench = get_wrench(robot, bodies)
+    forces = wrench[:, :, :3].reshape(wrench.shape[0], -1)
+    f_norm = torch.linalg.norm(forces, dim=1, dtype=torch.float32).clamp(min=force_floor)
+    ratio = x_norm / f_norm
+    stiffness_penalty = torch.abs(100.0 * ratio - 100.0 / k_cmd)
+    # print("stiffness_penalt", stiffness_penalty)
+    #stiffness_penalty = torch.abs(ratio - 1.0 / k_cmd)
+    #print("x_norm", x_norm)
+    #print("f_norm", f_norm)
+    # print("ratio", ratio)
+    # print("1/k_cmd", 1.0 / k_cmd)
+    #print(1000.0/ k_cmd)
+    #print(stiffness)
+    return stiffness_penalty
 
 
 def track_compliant_base_height_exp(
