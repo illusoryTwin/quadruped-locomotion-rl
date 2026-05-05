@@ -612,38 +612,158 @@ def log_env0_compliance(
     env,
     env_ids: torch.Tensor,
     log_path: str = "env0_compliance_log.csv",
+    max_learning_iterations: int | None = None,
+    num_steps_per_env: int | None = None,
+    log_last_learning_iterations: int | None = None,
+    extended_msd_log: bool = False,
+    enabled: bool = False,
 ):
-    """Log applied force and MSD deformation for env[0] to a CSV file."""
+    """Log applied force and MSD deformation for env[0] to a CSV file.
+
+    When ``enabled`` is False (default), the event is a no-op so training stays free of CSV I/O.
+
+    Optional gating (RL iterations, RSL-RL style): if ``max_learning_iterations``,
+    ``num_steps_per_env``, and ``log_last_learning_iterations`` are all set, rows
+    are written only after env step index reaches
+    ``(max_learning_iterations - log_last_learning_iterations) * num_steps_per_env``.
+    Each learning iteration performs ``num_steps_per_env`` vectorized env steps; the
+    environment step counter advances once per ``env.step`` call inside the rollout loop.
+
+    If ``extended_msd_log`` is True, the wide MSD column layout is used from step 0 for
+    the whole run (no gating). When gating is enabled, the same wide layout is used after
+    the gate opens. Otherwise the legacy 6-column layout is used.
+    """
+    if not enabled:
+        return
     import csv
+    import math
+
+    gated = (
+        max_learning_iterations is not None
+        and num_steps_per_env is not None
+        and log_last_learning_iterations is not None
+    )
+    if gated:
+        start_step = (max_learning_iterations - log_last_learning_iterations) * num_steps_per_env
+        if int(env.common_step_counter) < int(start_step):
+            return
+
+    use_extended = bool(gated or extended_msd_log)
 
     if not hasattr(env, "_env0_log_writer"):
         f = open(log_path, "w", newline="")
         writer = csv.writer(f)
-        writer.writerow(["step", "sim_time", "force_z", "x_def_x", "x_def_y", "x_def_z"])
+        if use_extended:
+            writer.writerow(
+                [
+                    "step",
+                    "sim_time",
+                    "approx_learning_iter",
+                    "kp",
+                    "K_base",
+                    "omega_base",
+                    "msd_dt",
+                    "M",
+                    "u_base_x",
+                    "u_base_y",
+                    "u_base_z",
+                    "force_z_event",
+                    "x_def_x",
+                    "x_def_y",
+                    "x_def_z",
+                    "dx_def_x",
+                    "dx_def_y",
+                    "dx_def_z",
+                ]
+            )
+        else:
+            writer.writerow(["step", "sim_time", "force_z", "x_def_x", "x_def_y", "x_def_z"])
         env._env0_log_file = f
         env._env0_log_writer = writer
+        env._env0_log_extended = use_extended
+        env._env0_log_num_steps_per_env = num_steps_per_env if (extended_msd_log or gated) else None
 
-    # Applied force
     fz = 0.0
     if hasattr(env, "_compliance_push_fz"):
         fz = env._compliance_push_fz[0, 0].item()
 
-    # MSD deformation
     x_def = [0.0, 0.0, 0.0]
+    dx_def = [0.0, 0.0, 0.0]
+    u_base = [0.0, 0.0, 0.0]
+    kp = 0.0
+    K_base = 0.0
+    omega_base = 0.0
+    msd_dt = 0.0
+    M_cfg = 0.0
+    approx_it = 0
     if hasattr(env, "compliance_manager") and env.compliance_manager is not None:
-        msd = env.compliance_manager._msd_system
+        cm = env.compliance_manager
+        cfg = cm.cfg
+        M_cfg = float(cfg.base_inertia)
+        msd_dt = float(cfg.dt)
+        if hasattr(env, "command_manager"):
+            try:
+                kp = float(env.command_manager.get_command("stiffness")[0, 0].item())
+            except Exception:
+                kp = float(cfg.base_stiffness)
+        else:
+            kp = float(cfg.base_stiffness)
+        scale_base = float(cfg.compliant_bodies.get("base", 1.0))
+        K_base = kp * scale_base
+        if K_base > 0.0 and M_cfg > 0.0:
+            omega_base = float(math.sqrt(K_base / M_cfg))
+        try:
+            from src.compliance.utils.dynamics import get_wrench
+
+            names = list(cm._compliant_body_names)
+            bi = int(names.index("base")) if "base" in names else 0
+            wrench = get_wrench(cm._robot, names)
+            u_base = wrench[0, bi, :3].detach().cpu().tolist()
+        except Exception:
+            u_base = [0.0, 0.0, 0.0]
+        msd = cm._msd_system
         if msd is not None:
-            x_def = msd.state["x_def"][0, 0:3].cpu().tolist()
+            x_def = msd.state["x_def"][0, 0:3].detach().cpu().tolist()
+            dx_def = msd.state["dx_def"][0, 0:3].detach().cpu().tolist()
+    nsp = getattr(env, "_env0_log_num_steps_per_env", None)
+    if isinstance(nsp, int) and nsp > 0:
+        approx_it = int(env.common_step_counter) // int(nsp)
 
     t = env.common_step_counter * env.step_dt
-    env._env0_log_writer.writerow([
-        env.common_step_counter,
-        f"{t:.4f}",
-        f"{fz:.4f}",
-        f"{x_def[0]:.6f}",
-        f"{x_def[1]:.6f}",
-        f"{x_def[2]:.6f}",
-    ])
+    if getattr(env, "_env0_log_extended", False):
+        env._env0_log_writer.writerow(
+            [
+                env.common_step_counter,
+                f"{t:.4f}",
+                approx_it,
+                f"{kp:.6f}",
+                f"{K_base:.6f}",
+                f"{omega_base:.6f}",
+                f"{msd_dt:.6f}",
+                f"{M_cfg:.6f}",
+                f"{u_base[0]:.6f}",
+                f"{u_base[1]:.6f}",
+                f"{u_base[2]:.6f}",
+                f"{fz:.4f}",
+                f"{x_def[0]:.6f}",
+                f"{x_def[1]:.6f}",
+                f"{x_def[2]:.6f}",
+                f"{dx_def[0]:.6f}",
+                f"{dx_def[1]:.6f}",
+                f"{dx_def[2]:.6f}",
+            ]
+        )
+    else:
+        env._env0_log_writer.writerow(
+            [
+                env.common_step_counter,
+                f"{t:.4f}",
+                f"{fz:.4f}",
+                f"{x_def[0]:.6f}",
+                f"{x_def[1]:.6f}",
+                f"{x_def[2]:.6f}",
+            ]
+        )
 
     if env.common_step_counter % 500 == 0:
         env._env0_log_file.flush()
