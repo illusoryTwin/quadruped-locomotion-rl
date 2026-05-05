@@ -39,7 +39,7 @@ from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
 from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2
 from src.modules.curriculums import staged_force_ramp, multi_stage_stiffness
-from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2, joint_manual_limit, diagonal_leg_symmetry_l1, all_leg_symmetry_l1
+from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2, joint_manual_limit, diagonal_leg_symmetry_l1, all_leg_symmetry_l1, track_stiffness_deformation_force_ratio
 
 
 @configclass
@@ -88,7 +88,6 @@ class RoughTerrainSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     base_position = BasePositionCommandCfg(
         resampling_time_range=(10.0, 10.0),
-        # resampling_time_range=(7.0, 7.0),
         ranges=BasePositionCommandCfg.Ranges(
             x=(0.0, 0.0),
             y=(0.0, 0.0),
@@ -111,9 +110,8 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(10.0, 10.0),
-        # resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(600.0, 1000.0)), # 700.0, 700.0)),
-        # ranges=StiffnessCommandCfg.Ranges(kp=(400.0, 400.0)), # 30.0, 50.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(500.0, 1500.0)),
+        discrete_step=250.0,
     )
 
     compliance = ComplianceCommandCfg(
@@ -263,7 +261,16 @@ class EventCfg:
     #         "force_amplitude": [30.0],
     #         "hold_time_range": (2.0, 6.0),
     #     },
-    # )
+    env0_logger = EventTerm(
+        func=log_env0_compliance,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "log_path": "env0_compliance_log.csv",
+            "extended_msd_log": True,
+            "num_steps_per_env": 24,
+        },
+    )
 
 
 @configclass
@@ -284,6 +291,16 @@ class RewardsCfg:
         weight=2.5,
         params={"command_name": "base_position", "std": 0.05},
     )
+
+    stiffness_def_force_ratio = RewardTerm(
+        func=track_stiffness_deformation_force_ratio,
+        weight=-0.1,
+        params={
+            "stiffness_command_name": "stiffness",
+            "compliance_command_name": "compliance",
+        },
+    )
+
     # track_compliant_pos_xy = RewardTerm(
     #     func=track_compliant_base_xy_pos_cmd_exp,
     #     weight=2.0,
@@ -392,6 +409,7 @@ class UnitreeGo2SoftWalkEnvCfg(ManagerBasedRLEnvCfg):
         terminations: TerminationsCfg = TerminationsCfg()
         events: EventCfg = EventCfg()
         curriculum: CurriculumCfg = CurriculumCfg()
+        log_env0_compliance_csv: bool = False
 
         def __post_init__(self):
             self.decimation = 4
@@ -402,4 +420,5 @@ class UnitreeGo2SoftWalkEnvCfg(ManagerBasedRLEnvCfg):
                 self.scene.height_scanner.update_period = self.decimation * self.sim.dt
             if self.scene.contact_forces is not None:
                 self.scene.contact_forces.update_period = self.sim.dt
+            self.events.env0_logger.params["enabled"] = self.log_env0_compliance_csv
 

@@ -22,12 +22,14 @@ import isaaclab.envs.mdp as mdp_curr
 from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
 from src.modules.events import apply_random_constant_force_z, apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, log_env0_compliance
+from src.modules.log_msd_term_magnitudes import log_env0_msd_term_magnitudes
 # from src.modules.events import apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_constant_force_z, log_env0_compliance
 from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
-from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2, joint_manual_limit, diagonal_leg_symmetry_l1, all_leg_symmetry_l1
+from src.modules.rewards import track_compliant_base_pos_cmd_exp, track_compliant_base_xy_pos_cmd_exp, base_cartesian_deformation, feet_contact, ang_vel_z_l2, lin_vel_xy_l2, joint_manual_limit, diagonal_leg_symmetry_l1, all_leg_symmetry_l1, track_stiffness_deformation_force_ratio
 from src.modules.curriculums import staged_force_ramp, multi_stage_stiffness
+from src.modules.curriculums import ramp_force_amplitude
 
 
 @configclass
@@ -82,9 +84,11 @@ class CommandsCfg:
             z=(0.3, 0.3),
         ),
     )
+
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(5.0, 5.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(1000.0, 1000.0)), # 800.0, 800.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(500.0, 1500.0)),
+        discrete_step=250.0,
     )
 
     compliance = ComplianceCommandCfg(
@@ -208,11 +212,32 @@ class EventCfg:
         interval_range_s=(5.0, 8.0), # (10.0, 15.0), # 0.02, 0.02),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [70.0],
+            "force_amplitude": [100.0], # [70.0],
             "hold_time_range": (2.0, 6.0),
         },
     )
 
+    env0_logger = EventTerm(
+        func=log_env0_compliance,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "log_path": "env0_compliance_log.csv",
+            "extended_msd_log": True,
+            "num_steps_per_env": 24,
+        },
+    )
+
+
+    msd_terms_logger = EventTerm(
+        func=log_env0_msd_term_magnitudes,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "log_path": "env0_msd_dynamics_terms.csv",
+            "num_steps_per_env": 24,
+        },
+    )
 
     # # XY sinusoidal force on base, same interval as Z push
     # compliance_push_xy = EventTerm(
@@ -233,7 +258,15 @@ class RewardsCfg:
     track_compliant_pos_z = RewardTerm(
         func=track_compliant_base_pos_cmd_exp,
         weight=2.0, # 2.5, # 2.0,
-        params={"command_name": "base_position", "std": 0.04}, # 0.04}, # 0.08},
+        params={"command_name": "base_position", "std": 0.04},
+    )
+    stiffness_def_force_ratio = RewardTerm(
+        func=track_stiffness_deformation_force_ratio,
+        weight=-0.1,
+        params={
+            "stiffness_command_name": "stiffness",
+            "compliance_command_name": "compliance",
+        },
     )
     # track_compliant_pos_xy = RewardTerm(
     #     func=track_compliant_base_xy_pos_cmd_exp,
@@ -260,7 +293,7 @@ class RewardsCfg:
     flat_orientation = RewardTerm(func=mdp.flat_orientation_l2, weight=-1.0) # -0.5) # -1.0)
     joint_default_pos = RewardTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.5, # -0.3, # -0.1, # -0.075, # -0.1,
+        weight=-0.25, # -0.5, # -0.3, # -0.1, # -0.075, # -0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
     )
     dof_torques = RewardTerm(mdp.joint_torques_l2, weight=-2e-7) # -1e-7)
@@ -330,6 +363,25 @@ class TerminationsCfg:
     )
 
 
+@configclass
+class CurriculumCfg:
+    # Simple force ramp: 0 N for first 1000 iters, then linearly 0→70 N over next 1000 iters
+    # warmup_steps = 1000 iters × 24 steps/iter = 24000
+    # ramp_steps   = 1000 iters × 24 steps/iter = 24000
+    force_amplitude = CurrTerm(
+        func=mdp_curr.modify_term_cfg,
+        params={
+            "address": "events.compliance_push.params.force_amplitude",
+            "modify_fn": ramp_force_amplitude,
+            "modify_params": {
+                "initial": 0.0,
+                "final": 70.0,
+                "warmup_steps": 24000,   # 1000 iters × 24 steps
+                "ramp_steps": 24000,     # 1000 iters × 24 steps
+            },
+        },
+    )
+
 # @configclass
 # class CurriculumCfg:
 #     # 5 stages × 1000 iters = 5000 iters, steps_per_stage = 1000 × 24 = 24000
@@ -385,7 +437,9 @@ class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg):
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
         events: EventCfg = EventCfg()
-        # curriculum: CurriculumCfg = CurriculumCfg()
+        curriculum: CurriculumCfg = CurriculumCfg()
+        log_env0_compliance_csv: bool = False
+        log_env0_msd_dynamics_csv: bool = False
 
         def __post_init__(self):
             self.decimation = 4
@@ -396,4 +450,6 @@ class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg):
                 self.scene.height_scanner.update_period = self.decimation * self.sim.dt
             if self.scene.contact_forces is not None:
                 self.scene.contact_forces.update_period = self.sim.dt
+            self.events.env0_logger.params["enabled"] = self.log_env0_compliance_csv
+            self.events.msd_terms_logger.params["enabled"] = self.log_env0_msd_dynamics_csv
 
