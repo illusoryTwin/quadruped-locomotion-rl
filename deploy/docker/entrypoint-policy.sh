@@ -133,7 +133,12 @@ fi
 
 echo "[entrypoint] Starting MuJoCo simulator..."
 cd /workspace/unitree_mujoco/simulate_python
-python unitree_mujoco.py &
+if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
+    echo "[entrypoint] DISPLAY unset; starting MuJoCo under xvfb-run (headless)"
+    xvfb-run -a python unitree_mujoco.py &
+else
+    python unitree_mujoco.py &
+fi
 MUJOCO_PID=$!
 
 sleep 3

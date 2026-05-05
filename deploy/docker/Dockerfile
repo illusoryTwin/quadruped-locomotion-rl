@@ -52,6 +52,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     libglfw3 \
     libglfw3-dev \
     libglew-dev \
+    xvfb \
     wget && \
     apt -y autoremove && apt clean autoclean && \
     rm -rf /var/lib/apt/lists/*

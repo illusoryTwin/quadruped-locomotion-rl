@@ -1,4 +1,7 @@
 import time
+import os
+import csv
+from datetime import datetime
 import mujoco
 import mujoco.viewer
 from threading import Thread
@@ -61,6 +64,17 @@ force_vis_lock = threading.Lock()
 force_vis_origin = np.zeros(3)  # body position in world frame
 force_vis_vector = np.zeros(3)  # force vector in world frame
 
+# CSV logging: sim time, base z, applied Fz, and commanded z target
+LOG_DIR = os.environ.get("LOG_DIR", "/workspace/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_PATH = os.path.join(LOG_DIR, f"mujoco_base_z_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+CMD_Z_TARGET = float(os.environ.get("CMD_Z_TARGET", "0.3"))
+_log_file = open(LOG_PATH, "w", newline="", buffering=1)
+_log_writer = csv.writer(_log_file)
+_log_writer.writerow(["sim_time", "base_z", "force_fz", "commanded_z"])
+print(f"[INFO] Logging MuJoCo base-z CSV to: {LOG_PATH}")
+print(f"[INFO] Commanded z target for logging: {CMD_Z_TARGET:.4f}")
+
 
 time.sleep(0.2)
 
@@ -110,6 +124,11 @@ def SimulationThread():
             force_vis_vector[:] = mj_data.xfrc_applied[perturb_body_id, :3]
 
         mujoco.mj_step(mj_model, mj_data)
+
+        # Log ground-truth base height and currently applied vertical force
+        base_z = float(mj_data.xpos[perturb_body_id, 2])
+        force_fz = float(mj_data.xfrc_applied[perturb_body_id, 2])
+        _log_writer.writerow([f"{mj_data.time:.6f}", f"{base_z:.6f}", f"{force_fz:.6f}", f"{CMD_Z_TARGET:.6f}"])
 
         locker.release()
 
