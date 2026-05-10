@@ -20,6 +20,7 @@
 #   DDS_DOMAIN     - DDS domain ID (default: 1)
 #   KEYBOARD       - set to 1 to enable WASD velocity control
 #   POLICY_SOURCE  - "deploy" (default) or "logs" to control resolution priority
+#   STIFFNESS_PORT - TCP port for runtime stiffness injection (default: 7777, 0 to disable)
 
 set -e
 
@@ -34,6 +35,7 @@ DURATION="${DURATION:-120}"
 CMD_ARGS="${CMD_ARGS:-}"
 KEYBOARD="${KEYBOARD:-0}"
 POLICY_SOURCE="${POLICY_SOURCE:-deploy}"
+STIFFNESS_PORT="${STIFFNESS_PORT:-7777}"
 
 # ---------------------------------------------------------------------------
 # Parse task name
@@ -227,6 +229,7 @@ python deploy/deploy.py \
     --interface "$DDS_INTERFACE" \
     --domain "$DDS_DOMAIN" \
     --duration "$DURATION" \
+    --stiffness-port "$STIFFNESS_PORT" \
     $CMD_FLAGS $KB_FLAG &
 POLICY_PID=$!
 

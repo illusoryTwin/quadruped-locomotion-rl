@@ -29,10 +29,6 @@ import time
 import argparse
 from collections import deque
 
-import json
-import socket
-import threading
-
 import numpy as np
 import torch
 import yaml
@@ -47,47 +43,6 @@ from unitree_sdk2py.core.channel import (
 from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowCmd_
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_, LowCmd_
 from unitree_sdk2py.utils.crc import CRC
-
-
-
-class CommandServer(threading.Thread):
-    """Background TCP thread for runtime stiffness_commands injection."""
-
-    def __init__(self, deployer, port: int = 7777):
-        super().__init__(daemon=True)
-        self._deployer = deployer
-        self._port = port
-
-    def run(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
-            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            srv.bind(("0.0.0.0", self._port))
-            srv.listen(1)
-            print(f"[CommandServer] Listening on port {self._port}")
-            while True:
-                try:
-                    conn, _ = srv.accept()
-                    with conn:
-                        line = conn.makefile().readline()
-                        if not line:
-                            continue
-                        response = self._handle(line.strip())
-                        conn.sendall((response + "\n").encode())
-                except Exception as e:
-                    print(f"[CommandServer] Error: {e}")
-
-    def _handle(self, raw: str) -> str:
-        try:
-            msg = json.loads(raw)
-            if "stiffness_commands" not in msg:
-                return json.dumps({"status": "error", "message": "missing stiffness_commands key"})
-            value = float(msg["stiffness_commands"])
-            with self._deployer._cmd_lock:
-                self._deployer.commands["stiffness_commands"] = np.array([value], dtype=np.float32)
-            print(f"[CommandServer] stiffness_commands -> {value}")
-            return json.dumps({"status": "ok", "stiffness_commands": value})
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
-            return json.dumps({"status": "error", "message": str(e)})
 
 
 class Go2PolicyDeployer:
@@ -122,7 +77,6 @@ class Go2PolicyDeployer:
         interface: str = "lo",
         domain_id: int = 1,
         cmd_overrides: dict = None,
-        stiffness_port: int = 7777,
     ):
         self.config = config
         self.config_name = config_name
@@ -130,7 +84,6 @@ class Go2PolicyDeployer:
         self.history_length = config["history_length"]
         self.action_scale = config["action_scale"]
         self.control_dt = config["control_dt"]
-        self._cmd_lock = threading.Lock()
 
         kp = config["kp"]
         kd = config["kd"]
@@ -191,10 +144,6 @@ class Go2PolicyDeployer:
 
         # Initialize history buffers with first real observation (now at default pose)
         self._init_history_from_state()
-
-        if stiffness_port > 0 and "stiffness_commands" in self.commands:
-            self._cmd_server = CommandServer(self, port=stiffness_port)
-            self._cmd_server.start()
 
     def _state_callback(self, msg: LowState_):
         self.state = msg
@@ -309,8 +258,7 @@ class Go2PolicyDeployer:
             return self.last_action.copy()
 
         elif source == self.COMMAND_SOURCE:
-            with self._cmd_lock:
-                return self.commands[name].copy()
+            return self.commands[name].copy()
 
         else:
             raise ValueError(f"Unknown observation source: {source}")
@@ -485,8 +433,6 @@ Examples:
     parser.add_argument("--domain", type=int, default=1, help="DDS domain ID (1 for sim, 0 for real)")
     parser.add_argument("--duration", type=float, default=60.0, help="Run duration in seconds")
     parser.add_argument("--keyboard", action="store_true", help="Enable WASD keyboard velocity control")
-    parser.add_argument("--stiffness-port", type=int, default=7777,
-                        help="TCP port for runtime stiffness injection (0 to disable, default 7777)")
 
     args = parser.parse_args()
 
@@ -510,7 +456,6 @@ Examples:
         interface=args.interface,
         domain_id=args.domain,
         cmd_overrides=cmd_overrides,
-        stiffness_port=args.stiffness_port,
     )
 
     deployer.run(duration=args.duration, keyboard=args.keyboard)
