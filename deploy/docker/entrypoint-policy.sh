@@ -132,12 +132,66 @@ if [ -d "$MUJOCO_OVERLAY" ]; then
 fi
 
 echo "[entrypoint] Starting MuJoCo simulator..."
+
+# Extract kp/kd from deploy config to show in MuJoCo HUD
+MUJOCO_HUD_KP=""
+MUJOCO_HUD_KD=""
+if [ -f "$CONFIG_PATH" ]; then
+    MUJOCO_HUD_KP=$(python3 - "$CONFIG_PATH" <<PY
+import re
+import sys
+from pathlib import Path
+t=Path(sys.argv[1]).read_text(encoding="utf-8",errors="ignore")
+m=re.search(r"name:\s*stiffness_commands.*?default:\s*\[\s*([-+]?[0-9]*\.?[0-9]+)", t)
+print(m.group(1) if m else "")
+PY
+)
+    MUJOCO_HUD_KD=$(python3 - "$CONFIG_PATH" <<PY
+import re
+from pathlib import Path
+import sys
+t=Path(sys.argv[1]).read_text(encoding="utf-8",errors="ignore")
+m=re.search(r"^kd:\s*([^#\n]+)", t, re.M)
+print(m.group(1).strip() if m else "")
+PY
+)
+fi
+
+# Backward-compatible HUD values: fall back to kp/kd or nan
+if [ -f "$CONFIG_PATH" ]; then
+    if [ -z "$MUJOCO_HUD_KP" ]; then
+        MUJOCO_HUD_KP=$(python3 - "$CONFIG_PATH" <<PY
+import re
+import sys
+from pathlib import Path
+t=Path(sys.argv[1]).read_text(encoding="utf-8",errors="ignore")
+m=re.search(r"^kp:\s*([^#\n]+)", t, re.M)
+print(m.group(1).strip() if m else "")
+PY
+)
+    fi
+    if [ -z "$MUJOCO_HUD_KD" ]; then
+        MUJOCO_HUD_KD=$(python3 - "$CONFIG_PATH" <<PY
+import re
+import sys
+from pathlib import Path
+t=Path(sys.argv[1]).read_text(encoding="utf-8",errors="ignore")
+m=re.search(r"^kd:\s*([^#\n]+)", t, re.M)
+print(m.group(1).strip() if m else "")
+PY
+)
+    fi
+fi
+if [ -z "$MUJOCO_HUD_KP" ]; then MUJOCO_HUD_KP="nan"; fi
+if [ -z "$MUJOCO_HUD_KD" ]; then MUJOCO_HUD_KD="nan"; fi
+
 cd /workspace/unitree_mujoco/simulate_python
-if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
-    echo "[entrypoint] DISPLAY unset; starting MuJoCo under xvfb-run (headless)"
-    xvfb-run -a python unitree_mujoco.py &
+FORCE_XVFB="${FORCE_XVFB:-0}"
+if command -v xvfb-run >/dev/null 2>&1 && ( [ "$FORCE_XVFB" = "1" ] || [ -z "${DISPLAY:-}" ] || echo "${DISPLAY:-}" | grep -qE "^localhost:[0-9]+\.0$" ); then
+    echo "[entrypoint] Starting MuJoCo under xvfb-run"
+    MUJOCO_HUD_KP="$MUJOCO_HUD_KP" MUJOCO_HUD_KD="$MUJOCO_HUD_KD" xvfb-run -a python unitree_mujoco.py &
 else
-    python unitree_mujoco.py &
+    MUJOCO_HUD_KP="$MUJOCO_HUD_KP" MUJOCO_HUD_KD="$MUJOCO_HUD_KD" python unitree_mujoco.py &
 fi
 MUJOCO_PID=$!
 

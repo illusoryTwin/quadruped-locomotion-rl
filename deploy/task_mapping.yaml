@@ -23,3 +23,7 @@ go2_walk_flat:
   experiment_name: unitree_go2_walk
   deploy_config: flat_walk
 
+
+go2_flat_walk:
+  experiment_name: unitree_go2_walk
+  deploy_config: flat_walk

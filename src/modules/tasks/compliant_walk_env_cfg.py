@@ -110,7 +110,7 @@ class CommandsCfg:
 
     stiffness = StiffnessCommandCfg(
         resampling_time_range=(10.0, 10.0),
-        ranges=StiffnessCommandCfg.Ranges(kp=(500.0, 1500.0)),
+        ranges=StiffnessCommandCfg.Ranges(kp=(750.0, 2000.0)),
         discrete_step=250.0,
     )
 
@@ -292,14 +292,14 @@ class RewardsCfg:
         params={"command_name": "base_position", "std": 0.05},
     )
 
-    stiffness_def_force_ratio = RewardTerm(
-        func=track_stiffness_deformation_force_ratio,
-        weight=-0.1,
-        params={
-            "stiffness_command_name": "stiffness",
-            "compliance_command_name": "compliance",
-        },
-    )
+    # stiffness_def_force_ratio = RewardTerm(
+    #     func=track_stiffness_deformation_force_ratio,
+    #     weight=-0.1,
+    #     params={
+    #         "stiffness_command_name": "stiffness",
+    #         "compliance_command_name": "compliance",
+    #     },
+    # )
 
     # track_compliant_pos_xy = RewardTerm(
     #     func=track_compliant_base_xy_pos_cmd_exp,

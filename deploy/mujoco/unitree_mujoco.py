@@ -181,18 +181,18 @@ def PhysicsViewerThread():
                 rgba=COM_RGBA,
             )
             # Draw compliant target CoM (green) — MSD equilibrium under applied force
-            viewer.user_scn.ngeom += 1
-            comp_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
-            comp_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
-            mujoco.mjv_initGeom(
-                geom=comp_geom,
-                type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
-                size=np.array([COM_RADIUS, 0, 0]),
-                pos=compliant_com.astype(np.float64),
-                mat=np.eye(3).flatten(),
-                rgba=COMPLIANT_COM_RGBA,
-            )
-
+            # viewer.user_scn.ngeom += 1
+            # comp_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
+            # comp_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
+            # mujoco.mjv_initGeom(
+                # geom=comp_geom,
+                # type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
+                # size=np.array([COM_RADIUS, 0, 0]),
+                # pos=compliant_com.astype(np.float64),
+                # mat=np.eye(3).flatten(),
+                # rgba=COMPLIANT_COM_RGBA,
+            # )
+# 
             if force_mag > 0.1:
                 end = origin + force * ARROW_SCALE
 
@@ -232,11 +232,19 @@ def PhysicsViewerThread():
                 mat=np.eye(3).flatten(),
                 rgba=np.array([0, 0, 0, 0], dtype=np.float32),
             )
+            hud_kp = os.environ.get("MUJOCO_HUD_KP", "nan")
+            hud_kd = os.environ.get("MUJOCO_HUD_KD", "nan")
+            def hud_num(val):
+                try:
+                    return float(val)
+                except Exception:
+                    return float("nan")
             hud_geom.label = (
                 f"|F|={force_mag:.1f}  "
                 f"Fx={fx:+.1f}  "
                 f"Fy={fy:+.1f}  "
-                f"Fz={fz:+.1f}"
+                f"Fz={fz:+.1f}   \n"
+                f"kp={hud_num(hud_kp):.1f}, kd={hud_num(hud_kd):.3f}"
             )
 
         locker.release()

@@ -61,16 +61,10 @@ def track_stiffness_deformation_force_ratio(
     wrench = get_wrench(robot, bodies)
     forces = wrench[:, :, :3].reshape(wrench.shape[0], -1)
     f_norm = torch.linalg.norm(forces, dim=1, dtype=torch.float32).clamp(min=force_floor)
+    
     ratio = x_norm / f_norm
     stiffness_penalty = torch.abs(100.0 * ratio - 100.0 / k_cmd)
-    # print("stiffness_penalt", stiffness_penalty)
-    #stiffness_penalty = torch.abs(ratio - 1.0 / k_cmd)
-    #print("x_norm", x_norm)
-    #print("f_norm", f_norm)
-    # print("ratio", ratio)
-    # print("1/k_cmd", 1.0 / k_cmd)
-    #print(1000.0/ k_cmd)
-    #print(stiffness)
+
     return stiffness_penalty
 
 

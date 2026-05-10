@@ -27,6 +27,9 @@ TOPIC_LOWSTATE = "rt/lowstate"
 TOPIC_HIGHSTATE = "rt/sportmodestate"
 TOPIC_WIRELESS_CONTROLLER = "rt/wirelesscontroller"
 
+LATEST_KP = float("nan")
+LATEST_KD = float("nan")
+
 MOTOR_SENSOR_NUM = 3
 NUM_MOTOR_IDL_GO = 20
 NUM_MOTOR_IDL_HG = 35
@@ -110,6 +113,10 @@ class UnitreeSdk2Bridge:
 
     def LowCmdHandler(self, msg: LowCmd_):
         if self.mj_data != None:
+            global LATEST_KP, LATEST_KD
+            if self.num_motor > 0:
+                LATEST_KP = float(msg.motor_cmd[0].kp)
+                LATEST_KD = float(msg.motor_cmd[0].kd)
             for i in range(self.num_motor):
                 self.mj_data.ctrl[i] = (
                     msg.motor_cmd[i].tau
