@@ -232,7 +232,11 @@ def PhysicsViewerThread():
                 mat=np.eye(3).flatten(),
                 rgba=np.array([0, 0, 0, 0], dtype=np.float32),
             )
-            hud_kp = os.environ.get("MUJOCO_HUD_KP", "nan")
+            try:
+                with open("/tmp/quadruped_stiffness") as _f:
+                    hud_stiffness = f"{float(_f.read().strip()):.1f}"
+            except Exception:
+                hud_stiffness = os.environ.get("MUJOCO_HUD_KP", "nan")
             hud_kd = os.environ.get("MUJOCO_HUD_KD", "nan")
             def hud_num(val):
                 try:
@@ -244,7 +248,7 @@ def PhysicsViewerThread():
                 f"Fx={fx:+.1f}  "
                 f"Fy={fy:+.1f}  "
                 f"Fz={fz:+.1f}   \n"
-                f"kp={hud_num(hud_kp):.1f}, kd={hud_num(hud_kd):.3f}"
+                f"stiffness={hud_stiffness}, kd={hud_num(hud_kd):.3f}"
             )
 
         locker.release()

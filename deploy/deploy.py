@@ -50,6 +50,17 @@ from unitree_sdk2py.utils.crc import CRC
 
 
 
+STIFFNESS_HUD_PATH = "/tmp/quadruped_stiffness"
+
+
+def _write_stiffness_hud(value: float):
+    try:
+        with open(STIFFNESS_HUD_PATH, "w") as f:
+            f.write(str(value))
+    except OSError:
+        pass
+
+
 class CommandServer(threading.Thread):
     """Background TCP thread for runtime stiffness_commands injection."""
 
@@ -84,6 +95,7 @@ class CommandServer(threading.Thread):
             value = float(msg["stiffness_commands"])
             with self._deployer._cmd_lock:
                 self._deployer.commands["stiffness_commands"] = np.array([value], dtype=np.float32)
+            _write_stiffness_hud(value)
             print(f"[CommandServer] stiffness_commands -> {value}")
             return json.dumps({"status": "ok", "stiffness_commands": value})
         except (json.JSONDecodeError, ValueError, KeyError) as e:
@@ -192,6 +204,8 @@ class Go2PolicyDeployer:
         # Initialize history buffers with first real observation (now at default pose)
         self._init_history_from_state()
 
+        if "stiffness_commands" in self.commands:
+            _write_stiffness_hud(float(self.commands["stiffness_commands"][0]))
         if stiffness_port > 0 and "stiffness_commands" in self.commands:
             self._cmd_server = CommandServer(self, port=stiffness_port)
             self._cmd_server.start()
