@@ -259,18 +259,36 @@ def PhysicsViewerThread():
                         to=end.astype(np.float64),
                     )
 
-                # Force info text floating above the robot
-                hud_pos = origin.copy()
-                hud_pos[2] += 0.35  # above the robot
+                # --- Forces label (upper) ---
+                forces_pos = origin.copy()
+                forces_pos[2] += 0.42
 
                 viewer.user_scn.ngeom += 1
-                hud_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
-                hud_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
+                forces_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
+                forces_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
                 mujoco.mjv_initGeom(
-                    geom=hud_geom,
+                    geom=forces_geom,
                     type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
                     size=np.array([0.001, 0, 0]),
-                    pos=hud_pos.astype(np.float64),
+                    pos=forces_pos.astype(np.float64),
+                    mat=np.eye(3).flatten(),
+                    rgba=np.array([0, 0, 0, 0], dtype=np.float32),
+                )
+                fx, fy, fz = force
+                forces_geom.label = f"|F|{force_mag:5.1f}N  Fx{fx:+.1f}  Fy{fy:+.1f}  Fz{fz:+.1f}"
+
+                # --- Stiffness label (lower) ---
+                stiff_pos = origin.copy()
+                stiff_pos[2] += 0.35
+
+                viewer.user_scn.ngeom += 1
+                stiff_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
+                stiff_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
+                mujoco.mjv_initGeom(
+                    geom=stiff_geom,
+                    type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
+                    size=np.array([0.001, 0, 0]),
+                    pos=stiff_pos.astype(np.float64),
                     mat=np.eye(3).flatten(),
                     rgba=np.array([0, 0, 0, 0], dtype=np.float32),
                 )
@@ -287,12 +305,10 @@ def PhysicsViewerThread():
                 except Exception:
                     kd_val = float("nan")
 
-                # Stiffness progress bar — ASCII only (MuJoCo label limit is 99 UTF-8 bytes;
-                # Unicode block chars are 3 bytes each and blow the budget)
                 BAR_LEN    = 11
-                STIFF_ZERO = 400.0  # below 500 = 0 units
-                STIFF_STEP = 100.0  # 500=1, 600=2, ..., 1500=10 (full)
-                stiff_ok  = (stiffness_val == stiffness_val)  # False when NaN
+                STIFF_ZERO = 400.0
+                STIFF_STEP = 100.0
+                stiff_ok  = (stiffness_val == stiffness_val)
                 kd_ok     = (kd_val == kd_val)
                 filled    = max(0, min(BAR_LEN, int((stiffness_val - STIFF_ZERO) / STIFF_STEP))) if stiff_ok else 0
                 bar       = "#" * filled + "." * (BAR_LEN - filled)
@@ -300,12 +316,9 @@ def PhysicsViewerThread():
                 kd_str    = f"{kd_val:.3f}"        if kd_ok    else "n/a"
                 step_str  = f"+/-{config.STIFFNESS_KEY_STEP:.0f}" if config.ENABLE_STIFFNESS_KEYS else ""
 
-                fx, fy, fz = force
-                line1 = f"|F|{force_mag:5.1f}N  Fx{fx:+.1f}  Fy{fy:+.1f}  Fz{fz:+.1f}"
-                line2 = f"[{bar}]  {stiff_str}  kd {kd_str}"
-                line3 = f"[  /  ] {step_str}" if config.ENABLE_STIFFNESS_KEYS else ""
-                label = "\n".join(x for x in [line1, line2, line3] if x)
-                hud_geom.label = label
+                stiff_line1 = f"kp {stiff_str}  [{bar}]  kd {kd_str}"
+                stiff_line2 = f"            [  /  ] {step_str}" if config.ENABLE_STIFFNESS_KEYS else ""
+                stiff_geom.label = "\n".join(x for x in [stiff_line1, stiff_line2] if x)
         finally:
             locker.release()
         time.sleep(config.VIEWER_DT)
