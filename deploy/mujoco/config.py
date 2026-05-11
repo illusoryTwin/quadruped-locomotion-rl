@@ -12,6 +12,8 @@ ENABLE_ELASTIC_BAND = False # Virtual spring band, used for lifting h1
 ENABLE_VERTICAL_PERTURBATION = True # Periodic vertical force on torso (Space to toggle)
 ENABLE_LATERAL_PERTURBATION = True # Random lateral (XY) pushes on torso (P to toggle)
 ENABLE_DIRECTIONAL_PERTURBATION = True # Arrow-key controlled XY force on torso
+ENABLE_STIFFNESS_KEYS = True          # [ / ] keys to decrease / increase stiffness_commands
+STIFFNESS_KEY_STEP = 100.0            # how much each keypress changes stiffness_commands
 
 SIMULATE_DT = 0.005  # Need to be larger than the runtime of viewer.sync()
 VIEWER_DT = 0.02  # 50 fps for viewer

@@ -1,3 +1,5 @@
+import json
+import socket
 import time
 import os
 import csv
@@ -25,6 +27,43 @@ if config.ROBOT == "h1" or config.ROBOT == "g1":
 else:
     perturb_body_id = mj_model.body("base_link").id
 
+class StiffnessKeyController:
+    """[ / ] keys to decrease / increase stiffness_commands in the running policy."""
+
+    GLFW_KEY_LEFT_BRACKET  = 91
+    GLFW_KEY_RIGHT_BRACKET = 93
+
+    def __init__(self, step: float = 100.0, min_val: float = 0.0, max_val: float = 2000.0):
+        self._step = step
+        self._min = min_val
+        self._max = max_val
+        self._port = int(os.environ.get("STIFFNESS_PORT", "7777"))
+        print(f"[StiffnessKeys] [ = −{step:.0f}   ] = +{step:.0f}   (port {self._port})")
+
+    def _current(self) -> float:
+        try:
+            with open("/tmp/quadruped_stiffness") as f:
+                return float(f.read().strip())
+        except Exception:
+            return 1000.0
+
+    def _send(self, value: float):
+        payload = json.dumps({"stiffness_commands": value}) + "\n"
+        try:
+            with socket.create_connection(("127.0.0.1", self._port), timeout=1.0) as sock:
+                sock.sendall(payload.encode())
+                sock.makefile().readline()
+            print(f"[StiffnessKeys] stiffness_commands -> {value:.1f}")
+        except Exception as e:
+            print(f"[StiffnessKeys] send error: {e}")
+
+    def MujocoKeyCallback(self, key):
+        if key == self.GLFW_KEY_LEFT_BRACKET:
+            self._send(max(self._min, self._current() - self._step))
+        elif key == self.GLFW_KEY_RIGHT_BRACKET:
+            self._send(min(self._max, self._current() + self._step))
+
+
 # Collect key callbacks from enabled perturbation systems
 key_callbacks = []
 
@@ -44,6 +83,10 @@ if config.ENABLE_LATERAL_PERTURBATION:
 if config.ENABLE_DIRECTIONAL_PERTURBATION:
     directional_perturbation = DirectionalPerturbation()
     key_callbacks.append(directional_perturbation.MujocoKeyCallback)
+
+if config.ENABLE_STIFFNESS_KEYS:
+    stiffness_keys = StiffnessKeyController(step=config.STIFFNESS_KEY_STEP)
+    key_callbacks.append(stiffness_keys.MujocoKeyCallback)
 
 if key_callbacks:
     def combined_key_callback(key):
@@ -152,106 +195,119 @@ def PhysicsViewerThread():
 
     while viewer.is_running():
         locker.acquire()
+        try:
+            # Read force state
+            with force_vis_lock:
+                origin = force_vis_origin.copy()
+                force = force_vis_vector.copy()
 
-        # Read force state
-        with force_vis_lock:
-            origin = force_vis_origin.copy()
-            force = force_vis_vector.copy()
+            force_mag = np.linalg.norm(force)
+            com_pos = mj_data.subtree_com[robot_root_id].copy()
 
-        force_mag = np.linalg.norm(force)
-        com_pos = mj_data.subtree_com[robot_root_id].copy()
+            # MSD steady-state displacement from current position: delta = F / k
+            compliant_com = com_pos + force / COMPLIANCE_STIFFNESS
 
-        # MSD steady-state displacement from current position: delta = F / k
-        compliant_com = com_pos + force / COMPLIANCE_STIFFNESS
+            with viewer.lock():
+                viewer.sync()
+                viewer.user_scn.ngeom = 0  # clear previous frame's geoms
 
-        with viewer.lock():
-            viewer.sync()
-            viewer.user_scn.ngeom = 0  # clear previous frame's geoms
-
-            # Draw actual CoM (red)
-            viewer.user_scn.ngeom += 1
-            com_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
-            com_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
-            mujoco.mjv_initGeom(
-                geom=com_geom,
-                type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
-                size=np.array([COM_RADIUS, 0, 0]),
-                pos=com_pos.astype(np.float64),
-                mat=np.eye(3).flatten(),
-                rgba=COM_RGBA,
-            )
-            # Draw compliant target CoM (green) — MSD equilibrium under applied force
-            # viewer.user_scn.ngeom += 1
-            # comp_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
-            # comp_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
-            # mujoco.mjv_initGeom(
-                # geom=comp_geom,
-                # type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
-                # size=np.array([COM_RADIUS, 0, 0]),
-                # pos=compliant_com.astype(np.float64),
-                # mat=np.eye(3).flatten(),
-                # rgba=COMPLIANT_COM_RGBA,
-            # )
-# 
-            if force_mag > 0.1:
-                end = origin + force * ARROW_SCALE
-
-                # Draw force arrow
+                # Draw actual CoM (red)
                 viewer.user_scn.ngeom += 1
-                geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
-                geom.category = mujoco.mjtCatBit.mjCAT_DECOR
+                com_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
+                com_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
                 mujoco.mjv_initGeom(
-                    geom=geom,
-                    type=mujoco.mjtGeom.mjGEOM_ARROW.value,
-                    size=np.zeros(3),
-                    pos=np.zeros(3),
-                    mat=np.zeros(9),
-                    rgba=ARROW_RGBA,
+                    geom=com_geom,
+                    type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
+                    size=np.array([COM_RADIUS, 0, 0]),
+                    pos=com_pos.astype(np.float64),
+                    mat=np.eye(3).flatten(),
+                    rgba=COM_RGBA,
                 )
-                mujoco.mjv_connector(
-                    geom=geom,
-                    type=mujoco.mjtGeom.mjGEOM_ARROW.value,
-                    width=ARROW_WIDTH,
-                    from_=origin.astype(np.float64),
-                    to=end.astype(np.float64),
+                # Draw compliant target CoM (green) — MSD equilibrium under applied force
+                # viewer.user_scn.ngeom += 1
+                # comp_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
+                # comp_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
+                # mujoco.mjv_initGeom(
+                    # geom=comp_geom,
+                    # type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
+                    # size=np.array([COM_RADIUS, 0, 0]),
+                    # pos=compliant_com.astype(np.float64),
+                    # mat=np.eye(3).flatten(),
+                    # rgba=COMPLIANT_COM_RGBA,
+                # )
+#
+                if force_mag > 0.1:
+                    end = origin + force * ARROW_SCALE
+
+                    # Draw force arrow
+                    viewer.user_scn.ngeom += 1
+                    geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
+                    geom.category = mujoco.mjtCatBit.mjCAT_DECOR
+                    mujoco.mjv_initGeom(
+                        geom=geom,
+                        type=mujoco.mjtGeom.mjGEOM_ARROW.value,
+                        size=np.zeros(3),
+                        pos=np.zeros(3),
+                        mat=np.zeros(9),
+                        rgba=ARROW_RGBA,
+                    )
+                    mujoco.mjv_connector(
+                        geom=geom,
+                        type=mujoco.mjtGeom.mjGEOM_ARROW.value,
+                        width=ARROW_WIDTH,
+                        from_=origin.astype(np.float64),
+                        to=end.astype(np.float64),
+                    )
+
+                # Force info text floating above the robot
+                hud_pos = origin.copy()
+                hud_pos[2] += 0.35  # above the robot
+
+                viewer.user_scn.ngeom += 1
+                hud_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
+                hud_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
+                mujoco.mjv_initGeom(
+                    geom=hud_geom,
+                    type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
+                    size=np.array([0.001, 0, 0]),
+                    pos=hud_pos.astype(np.float64),
+                    mat=np.eye(3).flatten(),
+                    rgba=np.array([0, 0, 0, 0], dtype=np.float32),
                 )
-
-            # Force info text floating above the robot
-            fx, fy, fz = force
-            hud_pos = origin.copy()
-            hud_pos[2] += 0.35  # above the robot
-
-            viewer.user_scn.ngeom += 1
-            hud_geom = viewer.user_scn.geoms[viewer.user_scn.ngeom - 1]
-            hud_geom.category = mujoco.mjtCatBit.mjCAT_DECOR
-            mujoco.mjv_initGeom(
-                geom=hud_geom,
-                type=mujoco.mjtGeom.mjGEOM_SPHERE.value,
-                size=np.array([0.001, 0, 0]),
-                pos=hud_pos.astype(np.float64),
-                mat=np.eye(3).flatten(),
-                rgba=np.array([0, 0, 0, 0], dtype=np.float32),
-            )
-            try:
-                with open("/tmp/quadruped_stiffness") as _f:
-                    hud_stiffness = f"{float(_f.read().strip()):.1f}"
-            except Exception:
-                hud_stiffness = os.environ.get("MUJOCO_HUD_KP", "nan")
-            hud_kd = os.environ.get("MUJOCO_HUD_KD", "nan")
-            def hud_num(val):
                 try:
-                    return float(val)
+                    with open("/tmp/quadruped_stiffness") as _f:
+                        stiffness_val = float(_f.read().strip())
                 except Exception:
-                    return float("nan")
-            hud_geom.label = (
-                f"|F|={force_mag:.1f}  "
-                f"Fx={fx:+.1f}  "
-                f"Fy={fy:+.1f}  "
-                f"Fz={fz:+.1f}   \n"
-                f"stiffness={hud_stiffness}, kd={hud_num(hud_kd):.3f}"
-            )
+                    try:
+                        stiffness_val = float(os.environ.get("MUJOCO_HUD_KP", "nan"))
+                    except Exception:
+                        stiffness_val = float("nan")
+                try:
+                    kd_val = float(os.environ.get("MUJOCO_HUD_KD", "nan"))
+                except Exception:
+                    kd_val = float("nan")
 
-        locker.release()
+                # Stiffness progress bar — ASCII only (MuJoCo label limit is 99 UTF-8 bytes;
+                # Unicode block chars are 3 bytes each and blow the budget)
+                BAR_LEN    = 11
+                STIFF_ZERO = 400.0  # below 500 = 0 units
+                STIFF_STEP = 100.0  # 500=1, 600=2, ..., 1500=10 (full)
+                stiff_ok  = (stiffness_val == stiffness_val)  # False when NaN
+                kd_ok     = (kd_val == kd_val)
+                filled    = max(0, min(BAR_LEN, int((stiffness_val - STIFF_ZERO) / STIFF_STEP))) if stiff_ok else 0
+                bar       = "#" * filled + "." * (BAR_LEN - filled)
+                stiff_str = f"{stiffness_val:.0f}" if stiff_ok else "n/a"
+                kd_str    = f"{kd_val:.3f}"        if kd_ok    else "n/a"
+                step_str  = f"+/-{config.STIFFNESS_KEY_STEP:.0f}" if config.ENABLE_STIFFNESS_KEYS else ""
+
+                fx, fy, fz = force
+                line1 = f"|F|{force_mag:5.1f}N  Fx{fx:+.1f}  Fy{fy:+.1f}  Fz{fz:+.1f}"
+                line2 = f"[{bar}]  {stiff_str}  kd {kd_str}"
+                line3 = f"[  /  ] {step_str}" if config.ENABLE_STIFFNESS_KEYS else ""
+                label = "\n".join(x for x in [line1, line2, line3] if x)
+                hud_geom.label = label
+        finally:
+            locker.release()
         time.sleep(config.VIEWER_DT)
 
 

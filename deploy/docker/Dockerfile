@@ -74,7 +74,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # MuJoCo
 # -----------------------------------------------------------------------------
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install mujoco numpy pyyaml opencv-python pygame
+    pip install mujoco numpy pyyaml pygame
 
 # -----------------------------------------------------------------------------
 # Unitree SDK2 Python (DDS communication)

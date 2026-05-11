@@ -8,14 +8,25 @@ version = "0.1.0"
 description = "Lightweight deployment for quadruped locomotion RL policies"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "numpy",
-    "pyyaml",
+    "torch>=2.0",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "mujoco>=3.0",
+    "pygame>=2.0",
+    "unitree_sdk2py @ git+https://github.com/unitreerobotics/unitree_sdk2_python.git",
 ]
 
 [project.optional-dependencies]
-robot = ["unitree_sdk2py"]
-mujoco = ["mujoco"]
+train = [
+    "gymnasium>=0.29",
+    "matplotlib>=3.7",
+    "pandas>=2.0",
+    "packaging",
+]
+dev = [
+    "pytest",
+    "ruff",
+]
 
 [tool.setuptools.packages.find]
 include = ["core*", "runners*", "utils*"]

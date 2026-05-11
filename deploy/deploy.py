@@ -70,11 +70,17 @@ class CommandServer(threading.Thread):
         self._port = port
 
     def run(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
+        try:
+            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             srv.bind(("0.0.0.0", self._port))
             srv.listen(1)
-            print(f"[CommandServer] Listening on port {self._port}")
+        except OSError as e:
+            print(f"[CommandServer] Could not bind port {self._port}: {e} — runtime stiffness control disabled")
+            return
+        print(f"[CommandServer] Listening on port {self._port}")
+        with srv:
             while True:
                 try:
                     conn, _ = srv.accept()

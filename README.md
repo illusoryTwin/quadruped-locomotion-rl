@@ -90,7 +90,7 @@ Currently supported tasks:
 | `go2_compliant_stance_fixed_stiffness` | `compliant_stance_fixed_stiffness_env_cfg.py` | Compliant stance with fixed stiffness |
 | `go2_default_stance` | `stance_env_cfg.py` | Default standing pose |
 
-This repo uses Isaac Sim 5.1 and Isaac Lab 2.3.0.
+This repo uses Isaac Sim `5.1.0.0` and Isaac Lab `v2.3.1`.
 
 ## Project Structure
 
@@ -130,112 +130,82 @@ quadruped-locomotion-rl/
 
 ## Installation
 
-### Training Environment (Isaac Sim + Isaac Lab)
+### Training
 
-Follow the official Isaac Lab installation guide:
-https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
+Requires an NVIDIA GPU. Tested with:
 
-**Training dependencies:**
+| Package | Version |
+|---------|---------|
+| Isaac Sim | `5.1.0.0` |
+| Isaac Lab | `v2.3.1` |
+| rsl-rl-lib | `3.0.1` |
+| Python | `3.11` |
+| CUDA drivers | `>= 525` |
 
-| Package | Version | Notes |
-|---------|---------|-------|
-| Isaac Sim | 5.1 | NVIDIA Omniverse simulator ([install guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html)) |
-| Isaac Lab | 2.3.0 | RL framework (installed via Isaac Sim guide above) |
-| RSL-RL | 3.0.1+ | PPO implementation (`pip install rsl-rl`) |
-| unitree_rl_lab | - | IsaacLab extension for Unitree robots (sibling repo: `../unitree_robotics/unitree_rl_lab/`) |
-| CUDA | 12.x | GPU acceleration |
-
-After installing Isaac Sim and Isaac Lab, install this project:
+Run the setup script — it handles everything (conda env, Isaac Sim, Isaac Lab, RSL-RL, unitree_rl_lab, this project):
 
 ```bash
-cd quadruped-locomotion-rl
-pip install -e .
+bash setup_train.sh
+conda activate env_isaaclab
 ```
 
-### Deployment Environment (MuJoCo)
+### Deployment (MuJoCo simulation)
 
-For deployment/testing see [quadruped-locomotion-deploy](https://github.com/illusoryTwin/quadruped-locomotion-deploy).
-
-Alternatively, set up locally:
+Fully Dockerized — no manual dependency setup needed. All dependencies (MuJoCo, PyTorch, Unitree SDK) are installed automatically inside the container.
 
 ```bash
-conda create -n go2_deploy python=3.10 -y
-conda activate go2_deploy
-pip install -r requirements.txt
-
-export UNITREE_MUJOCO_PATH=~/unitree_robotics/unitree_mujoco
-mkdir -p $(dirname $UNITREE_MUJOCO_PATH)
-git clone https://github.com/unitreerobotics/unitree_mujoco $UNITREE_MUJOCO_PATH
-git clone https://github.com/unitreerobotics/unitree_sdk2_python $(dirname $UNITREE_MUJOCO_PATH)/unitree_sdk2_python
-pip install -e $(dirname $UNITREE_MUJOCO_PATH)/unitree_sdk2_python
+cd deploy/docker
+docker compose build                                     # first time only (~15 min)
+docker compose run --rm quadruped-policy go2_soft_walk   # run a task
 ```
+
+Source code is bind-mounted, so code changes take effect immediately without rebuilding.
 
 ## Training
 
-Launch training with Isaac Lab:
-
 ```bash
-# Activate Isaac Sim environment
-conda activate isaacsim
+conda activate env_isaaclab
 
-# Train flat terrain walking
-python3 scripts/train.py --task=go2_walk_flat --num_envs=4096 --max_iterations=5000
+# Compliant stance
+python scripts/train.py --task=go2_compliant_stance --num_envs=4096 --max_iterations=5000 --headless
+
+# Soft walking
+python scripts/train.py --task=go2_soft_walk --num_envs=4096 --max_iterations=5000 --headless
 ```
 
-Visualize trained policy in Isaac Sim:
+Visualize a trained policy in Isaac Sim:
 
 ```bash
-python3 scripts/play.py --task=go2_walk_flat --num_envs=16
-```
-
-
-## Deployment (MuJoCo)
-
-### Terminal 1 - Launch MuJoCo simulator
-
-```bash
-cd ~/Workspace/Projects/quadruped-locomotion-rl
-conda activate go2_deploy
-python -m deploy.mujoco.launch_sim
-```
-
-### Terminal 2 - Run policy
-
-```bash
-cd ~/Workspace/Projects/quadruped-locomotion-rl
-conda activate go2_deploy
-
-# Run with default config
-python -m deploy.mujoco.run_policy --config deploy/configs/go2_flat.yaml
-
-# With velocity overrides
-python -m deploy.mujoco.run_policy --config deploy/configs/go2_flat.yaml --vx 1.0 --wz 0.5
-
-# With different checkpoint
-python -m deploy.mujoco.run_policy --config deploy/configs/go2_flat.yaml \
-    --checkpoint logs/rsl_rl/unitree_go2_walk/2025-12-29_15-43-52/model_1500.pt
+python scripts/play.py --task=go2_compliant_stance --num_envs=4
 ```
 
 
-
-
+## Deployment (MuJoCo simulation)
 
 ```bash
-POLICY_PATH=logs/rsl_rl/unitree_go2_walk/2026-03-09_17-29-46/exported/policy.pt docker compose run quadruped-policy go2_walk_flat 
+cd deploy/docker
+
+# Build image (first time only)
+docker compose build
+
+# Run a task (auto-resolves latest policy checkpoint)
+docker compose run --rm quadruped-policy go2_soft_walk
+docker compose run --rm quadruped-policy go2_compliant_stance
+
+# Override duration or starting stiffness
+DURATION=60 docker compose run --rm quadruped-policy go2_soft_walk
+CMD_ARGS="stiffness_commands=500.0" docker compose run --rm quadruped-policy go2_soft_walk
+
+# Change stiffness at runtime (in a second terminal)
+python deploy/stiffness_client.py --stiffness 500.0
 ```
 
-```bash
-python deploy/deploy.py \                                               
-    --policy logs/rsl_rl/unitree_go2_walk/2026-03-15_09-43-31/exported/policy.pt \   
-    --config deploy/configs/flat_walk.yaml \                            
-    --interface lo --domain 1                                           
-```
 
+## Real Hardware
 
-# Real hardware   
 ```bash
-python deploy/deploy.py \                                               
-    --policy logs/rsl_rl/unitree_go2_walk/2026-03-15_09-43-31/exported/policy.pt \   
-    --config deploy/configs/flat_walk.yaml \                            
-    --interface eth0 --domain 0                                         
+python deploy/deploy.py \
+    --policy logs/rsl_rl/unitree_go2_walk_soft/2026-05-06_00-20-12/exported/policy.pt \
+    --config deploy/configs/soft_walk.yaml \
+    --interface eth0 --domain 0
 ```                               
