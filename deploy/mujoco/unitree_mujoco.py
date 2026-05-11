@@ -2,7 +2,6 @@ import json
 import socket
 import time
 import os
-import pygame
 import csv
 from datetime import datetime
 import mujoco
@@ -15,15 +14,10 @@ from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 from unitree_sdk2py_bridge import UnitreeSdk2Bridge, ElasticBand, VerticalPerturbation, LateralPerturbation, DirectionalPerturbation
 
 import config
+import info_panel
 
 
 locker = threading.Lock()
-
-# Shared state written by PhysicsViewerThread, read by InfoPanelThread
-_panel_state = {
-    'force_mag': 0.0, 'fx': 0.0, 'fy': 0.0, 'fz': 0.0,
-    'stiffness': float('nan'), 'kd': float('nan'),
-}
 
 mj_model = mujoco.MjModel.from_xml_path(config.ROBOT_SCENE)
 mj_data = mujoco.MjData(mj_model)
@@ -299,12 +293,12 @@ def PhysicsViewerThread():
                     _kd = float("nan")
 
                 # Update info panel
-                _panel_state['force_mag'] = float(force_mag)
-                _panel_state['fx']        = float(fx)
-                _panel_state['fy']        = float(fy)
-                _panel_state['fz']        = float(fz)
-                _panel_state['stiffness'] = _stiffness
-                _panel_state['kd']        = _kd
+                info_panel.panel_state['force_mag'] = float(force_mag)
+                info_panel.panel_state['fx']        = float(fx)
+                info_panel.panel_state['fy']        = float(fy)
+                info_panel.panel_state['fz']        = float(fz)
+                info_panel.panel_state['stiffness'] = _stiffness
+                info_panel.panel_state['kd']        = _kd
 
                 # --- Stiffness label (lower, in-scene) ---
                 stiff_pos = origin.copy()
@@ -431,7 +425,7 @@ def InfoPanelThread():
 if __name__ == "__main__":
     viewer_thread = Thread(target=PhysicsViewerThread)
     sim_thread    = Thread(target=SimulationThread)
-    panel_thread  = Thread(target=InfoPanelThread, daemon=True)
+    panel_thread  = Thread(target=info_panel.run, args=(viewer,), daemon=True)
 
     viewer_thread.start()
     sim_thread.start()
