@@ -212,7 +212,7 @@ class EventCfg:
         interval_range_s=(5.0, 8.0), # (10.0, 15.0), # 0.02, 0.02),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
-            "force_amplitude": [100.0], # [70.0],
+            "force_amplitude": [140.0], # [150.0], # [100.0], # [70.0],
             "hold_time_range": (2.0, 6.0),
         },
     )
@@ -363,24 +363,24 @@ class TerminationsCfg:
     )
 
 
-@configclass
-class CurriculumCfg:
-    # Simple force ramp: 0 N for first 1000 iters, then linearly 0→70 N over next 1000 iters
-    # warmup_steps = 1000 iters × 24 steps/iter = 24000
-    # ramp_steps   = 1000 iters × 24 steps/iter = 24000
-    force_amplitude = CurrTerm(
-        func=mdp_curr.modify_term_cfg,
-        params={
-            "address": "events.compliance_push.params.force_amplitude",
-            "modify_fn": ramp_force_amplitude,
-            "modify_params": {
-                "initial": 0.0,
-                "final": 70.0,
-                "warmup_steps": 24000,   # 1000 iters × 24 steps
-                "ramp_steps": 24000,     # 1000 iters × 24 steps
-            },
-        },
-    )
+# @configclass
+# class CurriculumCfg:
+#     # Simple force ramp: 0 N for first 1000 iters, then linearly 0→70 N over next 1000 iters
+#     # warmup_steps = 1000 iters × 24 steps/iter = 24000
+#     # ramp_steps   = 1000 iters × 24 steps/iter = 24000
+#     force_amplitude = CurrTerm(
+#         func=mdp_curr.modify_term_cfg,
+#         params={
+#             "address": "events.compliance_push.params.force_amplitude",
+#             "modify_fn": ramp_force_amplitude,
+#             "modify_params": {
+#                 "initial": 0.0,
+#                 "final": 70.0,
+#                 "warmup_steps": 24000,   # 1000 iters × 24 steps
+#                 "ramp_steps": 24000,     # 1000 iters × 24 steps
+#             },
+#         },
+#     )
 
 # @configclass
 # class CurriculumCfg:
@@ -437,7 +437,7 @@ class UnitreeGo2StanceEnvCfg(ManagerBasedRLEnvCfg):
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
         events: EventCfg = EventCfg()
-        curriculum: CurriculumCfg = CurriculumCfg()
+        # curriculum: CurriculumCfg = CurriculumCfg()
         log_env0_compliance_csv: bool = False
         log_env0_msd_dynamics_csv: bool = False
 

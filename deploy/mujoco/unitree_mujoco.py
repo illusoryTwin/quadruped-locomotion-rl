@@ -99,6 +99,12 @@ if key_callbacks:
 else:
     viewer = mujoco.viewer.launch_passive(mj_model, mj_data)
 
+with viewer.lock():
+    viewer.cam.azimuth    = config.CAM_AZIMUTH
+    viewer.cam.elevation  = config.CAM_ELEVATION
+    viewer.cam.distance   = config.CAM_DISTANCE
+    viewer.cam.lookat[:]  = config.CAM_LOOKAT
+
 mj_model.opt.timestep = config.SIMULATE_DT
 num_motor_ = mj_model.nu
 dim_motor_sensor_ = 3 * num_motor_
@@ -262,6 +268,8 @@ def PhysicsViewerThread():
 
                 # --- Forces label (upper) ---
                 forces_pos = origin.copy()
+                forces_pos[0] -= 0.3
+                forces_pos[1] -= 0.3
                 forces_pos[2] += 0.42
 
                 viewer.user_scn.ngeom += 1
@@ -276,7 +284,7 @@ def PhysicsViewerThread():
                     rgba=np.array([0, 0, 0, 0], dtype=np.float32),
                 )
                 fx, fy, fz = force
-                forces_geom.label = f"|F|{force_mag:5.1f}N  Fx{fx:+.1f}  Fy{fy:+.1f}  Fz{fz:+.1f}"
+                forces_geom.label = f"|F|{force_mag:5.1f}N  Fz{fz:+.1f}"
 
                 # Read stiffness / kd for both the in-scene label and the panel
                 try:
@@ -302,6 +310,8 @@ def PhysicsViewerThread():
 
                 # --- Stiffness label (lower, in-scene) ---
                 stiff_pos = origin.copy()
+                stiff_pos[0] -= 0.3
+                stiff_pos[1] -= 0.3
                 stiff_pos[2] += 0.35
 
                 viewer.user_scn.ngeom += 1
@@ -326,8 +336,7 @@ def PhysicsViewerThread():
                 kd_str    = f"{_kd:.3f}"        if kd_ok    else "n/a"
                 step_str  = f"+/-{config.STIFFNESS_KEY_STEP:.0f}" if config.ENABLE_STIFFNESS_KEYS else ""
                 stiff_line1 = f"kp {stiff_str}  [{bar}]  kd {kd_str}"
-                stiff_line2 = f"            [  /  ] {step_str}" if config.ENABLE_STIFFNESS_KEYS else ""
-                stiff_geom.label = "\n".join(x for x in [stiff_line1, stiff_line2] if x)
+                stiff_geom.label = stiff_line1
         finally:
             locker.release()
         time.sleep(config.VIEWER_DT)

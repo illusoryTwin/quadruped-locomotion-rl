@@ -24,6 +24,9 @@ from src.modules.commands.stiffness_command import StiffnessCommandCfg
 from src.modules.commands.base_position_command import BasePositionCommandCfg
 from src.modules.commands.compliance_command import ComplianceCommandCfg
 from src.modules.rewards import track_compliant_base_pos_cmd_exp, base_cartesian_deformation, feet_contact
+from src.compliance.compliance_manager_cfg import ComplianceManagerCfg
+from src.modules.events import apply_random_constant_force_z, apply_sinusoidal_forces_z, apply_sinusoidal_forces_xy, apply_sinusoidal_forces_xy_push, apply_constant_force_z, log_env0_compliance
+from src.modules.log_msd_term_magnitudes import log_env0_msd_term_magnitudes
 
 
 @configclass
@@ -125,6 +128,31 @@ class ObservationsCfg:
 
 @configclass 
 class EventCfg:
+    # reset_scene = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+    # reset_base = EventTerm(
+    #     func=mdp.reset_root_state_uniform,
+    #     mode="reset",
+    #     params={
+    #         "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+    #         "velocity_range": {
+    #             "x": (-0.5, 0.5),
+    #             "y": (-0.5, 0.5),
+    #             "z": (-0.5, 0.5),
+    #             "roll": (-0.5, 0.5),
+    #             "pitch": (-0.5, 0.5),
+    #             "yaw": (-0.5, 0.5),
+    #         },
+    #     }
+    # )
+    # reset_robot_joints = EventTerm(
+    #     func=mdp.reset_joints_by_offset,
+    #     mode="reset",
+    #     params={
+    #         "position_range": (-0.5, 0.5),
+    #         "velocity_range": (-0.5, 0.5),
+    #     }
+    # )
+
     reset_scene = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
@@ -149,6 +177,64 @@ class EventCfg:
             "velocity_range": (-0.5, 0.5),
         }
     )
+
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup", 
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"), 
+            "static_friction_range": (0.7, 0.9), 
+            "dynamic_friction_range": (0.5, 0.7),
+            "restitution_range": (0.0, 0.3), 
+            "num_buckets": 64, 
+        },
+    )
+
+    randomize_com = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup", 
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "mass_distribution_params": (0.8, 1.2), # (0.9, 1.1),
+            "operation": "scale",
+        },
+    )
+
+
+    # Random constant Z force on base, held for 2-6s then resampled
+    compliance_push = EventTerm(
+        func=apply_random_constant_force_z,
+        mode="interval",
+        interval_range_s=(5.0, 8.0), # (10.0, 15.0), # 0.02, 0.02),
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "force_amplitude": [140.0], # [150.0], # [100.0], # [70.0],
+            "hold_time_range": (2.0, 6.0),
+        },
+    )
+
+    env0_logger = EventTerm(
+        func=log_env0_compliance,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "log_path": "env0_compliance_log.csv",
+            "extended_msd_log": True,
+            "num_steps_per_env": 24,
+        },
+    )
+
+
+    msd_terms_logger = EventTerm(
+        func=log_env0_msd_term_magnitudes,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "log_path": "env0_msd_dynamics_terms.csv",
+            "num_steps_per_env": 24,
+        },
+    )
+
     # # # pull_robot = EventTerm(
     # # #     func=mdp.apply_external_force_torque,
     # # #     mode="interval", 
@@ -241,9 +327,9 @@ class TerminationsCfg:
     )
 
 
-@configclass 
-class CurriculumCfg:
-    pass 
+# @configclass 
+# class CurriculumCfg:
+#     pass 
 
 
 @configclass
@@ -255,7 +341,9 @@ class UnitreeGo2DefaultStanceEnvCfg(ManagerBasedRLEnvCfg):
         rewards: RewardsCfg = RewardsCfg()
         terminations: TerminationsCfg = TerminationsCfg()
         events: EventCfg = EventCfg()
-        curriculum: CurriculumCfg = CurriculumCfg()
+        # curriculum: CurriculumCfg = CurriculumCfg()
+
+        log_env0_compliance: bool = False
 
         # compliance: ComplianceManagerCfg = ComplianceManagerCfg(
         #     enabled=True,
@@ -274,3 +362,6 @@ class UnitreeGo2DefaultStanceEnvCfg(ManagerBasedRLEnvCfg):
                 self.scene.height_scanner.update_period = self.decimation * self.sim.dt
             if self.scene.contact_forces is not None:
                 self.scene.contact_forces.update_period = self.sim.dt
+            if not self.log_env0_compliance:
+                self.events.env0_logger = None
+                self.events.msd_terms_logger = None

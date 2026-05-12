@@ -17,3 +17,9 @@ STIFFNESS_KEY_STEP = 100.0            # how much each keypress changes stiffness
 
 SIMULATE_DT = 0.005  # Need to be larger than the runtime of viewer.sync()
 VIEWER_DT = 0.02  # 50 fps for viewer
+
+# Camera initial view (applied once at startup)
+CAM_AZIMUTH   = 90 # 135    # horizontal orbit angle, degrees (0 = front)
+CAM_ELEVATION  = 0 # -20   # vertical tilt, degrees (negative = looking down)
+CAM_DISTANCE   = 2.0   # distance from lookat point, metres
+CAM_LOOKAT     = [0.05, 0.0, 0.25] # 0.3] # 15] # [0.0, 0.0, 0.3]  # point the camera orbits around
