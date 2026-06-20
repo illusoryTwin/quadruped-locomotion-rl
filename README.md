@@ -13,6 +13,8 @@ Reinforcement learning locomotion for the Unitree Go2 with task-space compliance
 - ❌ No additional sensors or external compliance controllers
 - ✅ One policy handles locomotion and compliance together
 
+**Example of compliant walk**
+
 ![Compliant locomotion policy](assets/compliant_policy_walk.gif)
 
 **Results:** Compliance level is set via `stiffness_command` and can also be changed online at runtime.
@@ -28,7 +30,7 @@ Online stiffness change during deployment:
 
 ![Online stiffness change](assets/compliant_policy_online_stiffness_change.gif)
 
-**Hardware tests.**
+**Hardware tests:**
 
 ![Hardware tests](assets/compliant_policy_hardware_softer.gif)
 ![Hardware tests](assets/compliant_policy_hardware_stiffer.gif)
