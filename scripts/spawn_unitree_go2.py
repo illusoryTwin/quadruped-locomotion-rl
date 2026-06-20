@@ -7,7 +7,7 @@ Usage:
 
     # Run with Isaac Lab launcher:
     cd /home/ekaterina-mozhegova/sber_ws/RL/IsaacLab
-    ./isaaclab.sh -p /home/ekaterina-mozhegova/Workspace/Projects/quadruped-locomotion-rl/scripts/spawn_unitree_go2.py
+    ./isaaclab.sh -p /home/ekaterina-mozhegova/Workspace/Projects/compliant-quadruped-locomotion/scripts/spawn_unitree_go2.py
 """
 
 import argparse

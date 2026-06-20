@@ -150,7 +150,7 @@ If you use this work, please cite:
   title         = {Force-Adaptive Policies for Robust and Safe Quadruped Locomotion},
   author        = {Ekaterina Mozhegova and Simeon Nedelchev},
   year          = {2026},
-  url           = {https://github.com/illusoryTwin/quadruped-locomotion-rl},
+  url           = {https://github.com/illusoryTwin/compliant-quadruped-locomotion},
 }
 ```
 

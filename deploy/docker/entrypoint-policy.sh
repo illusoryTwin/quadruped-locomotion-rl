@@ -24,10 +24,10 @@
 
 set -e
 
-TASK_MAPPING="/workspace/quadruped-locomotion-rl/deploy/task_mapping.yaml"
-LOGS_ROOT="/workspace/quadruped-locomotion-rl/logs/rsl_rl"
-DEPLOY_POLICIES="/workspace/quadruped-locomotion-rl/deploy/policies"
-CONFIGS_DIR="/workspace/quadruped-locomotion-rl/deploy/configs"
+TASK_MAPPING="/workspace/compliant-quadruped-locomotion/deploy/task_mapping.yaml"
+LOGS_ROOT="/workspace/compliant-quadruped-locomotion/logs/rsl_rl"
+DEPLOY_POLICIES="/workspace/compliant-quadruped-locomotion/deploy/policies"
+CONFIGS_DIR="/workspace/compliant-quadruped-locomotion/deploy/configs"
 
 DDS_INTERFACE="${DDS_INTERFACE:-lo}"
 DDS_DOMAIN="${DDS_DOMAIN:-1}"
@@ -121,7 +121,7 @@ fi
 # Launch MuJoCo simulator
 # ---------------------------------------------------------------------------
 # Overlay custom MuJoCo files (perturbation support, force visualization)
-MUJOCO_OVERLAY="/workspace/quadruped-locomotion-rl/deploy/mujoco"
+MUJOCO_OVERLAY="/workspace/compliant-quadruped-locomotion/deploy/mujoco"
 MUJOCO_TARGET="/workspace/unitree_mujoco/simulate_python"
 SCENE_TARGET="/workspace/unitree_mujoco/unitree_robots/go2"
 if [ -d "$MUJOCO_OVERLAY" ]; then
@@ -222,7 +222,7 @@ if [ "$KEYBOARD" = "1" ]; then
     KB_FLAG="--keyboard"
 fi
 
-cd /workspace/quadruped-locomotion-rl
+cd /workspace/compliant-quadruped-locomotion
 python deploy/deploy.py \
     --policy "$POLICY_PATH" \
     --config "$CONFIG_PATH" \

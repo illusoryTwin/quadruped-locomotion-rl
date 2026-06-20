@@ -3,7 +3,7 @@ Script to launch the MySceneCfg scene with Unitree Go2 robot.
 
 Usage:
     cd /path/to/IsaacLab
-    ./isaaclab.sh -p /home/kate/Workspace/Projects/thesis/quadruped-locomotion-rl/scripts/launch_scene.py --num_envs 4
+    ./isaaclab.sh -p /home/kate/Workspace/Projects/thesis/compliant-quadruped-locomotion/scripts/launch_scene.py --num_envs 4
 """
 
 import argparse

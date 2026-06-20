@@ -3,7 +3,7 @@
 # =============================================================================
 #
 # Interactive shell (MuJoCo + manual policy testing):
-#   cd quadruped-locomotion-rl/deploy/docker
+#   cd compliant-quadruped-locomotion/deploy/docker
 #   docker compose build
 #   docker compose run quadruped-deploy
 #
@@ -46,7 +46,7 @@ services:
       # Bind-mount source for live editing
       - type: bind
         source: ../../
-        target: /workspace/quadruped-locomotion-rl
+        target: /workspace/compliant-quadruped-locomotion
       # Persistent volume for logs
       - type: volume
         source: deploy-logs
@@ -73,7 +73,7 @@ services:
   quadruped-policy:
     image: quadruped-deploy
     container_name: quadruped-policy
-    entrypoint: /workspace/quadruped-locomotion-rl/deploy/docker/entrypoint-policy.sh
+    entrypoint: /workspace/compliant-quadruped-locomotion/deploy/docker/entrypoint-policy.sh
     ipc: host
     environment:
       - DISPLAY=${DISPLAY}
@@ -88,7 +88,7 @@ services:
         target: /tmp/.X11-unix
       - type: bind
         source: ../../
-        target: /workspace/quadruped-locomotion-rl
+        target: /workspace/compliant-quadruped-locomotion
       - type: volume
         source: deploy-logs
         target: /workspace/logs

@@ -14,7 +14,7 @@ MUJOCO_PID=$!
 sleep 3
 
 echo "[entrypoint] Starting policy controller..."
-cd /workspace/quadruped-locomotion-rl/deploy
+cd /workspace/compliant-quadruped-locomotion/deploy
 python run.py &
 POLICY_PID=$!
 

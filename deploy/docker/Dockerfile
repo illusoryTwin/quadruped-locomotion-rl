@@ -2,7 +2,7 @@
 # Deploy/Test container: MuJoCo + PyTorch + Unitree SDK for policy testing
 # =============================================================================
 #
-# Build context: quadruped-locomotion-rl/ repo root
+# Build context: compliant-quadruped-locomotion/ repo root
 #
 # Lightweight container for:
 #   - Running trained policies in MuJoCo simulation
@@ -23,7 +23,7 @@ ENV LANG=C.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Paths
-ARG QUADRUPED_RL_PATH=/workspace/quadruped-locomotion-rl
+ARG QUADRUPED_RL_PATH=/workspace/compliant-quadruped-locomotion
 ARG UNITREE_SDK_PATH=/workspace/unitree_sdk2py
 ARG UNITREE_MUJOCO_PATH=/workspace/unitree_mujoco
 
@@ -101,7 +101,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # -----------------------------------------------------------------------------
 COPY . ${QUADRUPED_RL_PATH}
 
-# Install quadruped-locomotion-rl package if pyproject.toml exists
+# Install compliant-quadruped-locomotion package if pyproject.toml exists
 RUN --mount=type=cache,target=/root/.cache/pip \
     cd ${QUADRUPED_RL_PATH} && \
     if [ -f pyproject.toml ]; then pip install -e .; fi

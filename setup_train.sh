@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# setup_train.sh — Training environment setup for quadruped-locomotion-rl
+# setup_train.sh — Training environment setup for compliant-quadruped-locomotion
 # =============================================================================
 #
 # Sets up the conda environment needed to train policies with Isaac Sim + Isaac Lab.
@@ -186,14 +186,14 @@ fi
 # ---------------------------------------------------------------------------
 # 7. This project
 # ---------------------------------------------------------------------------
-section "quadruped-locomotion-rl"
+section "compliant-quadruped-locomotion"
 
-if "$PIP" show quadruped-locomotion-rl &>/dev/null; then
-    info "quadruped-locomotion-rl already installed — skipping."
+if "$PIP" show compliant-quadruped-locomotion &>/dev/null; then
+    info "compliant-quadruped-locomotion already installed — skipping."
 else
-    info "Installing quadruped-locomotion-rl (editable)..."
+    info "Installing compliant-quadruped-locomotion (editable)..."
     "$PIP" install -e "$PROJECT_ROOT" --quiet
-    ok "quadruped-locomotion-rl installed."
+    ok "compliant-quadruped-locomotion installed."
 fi
 
 # ---------------------------------------------------------------------------

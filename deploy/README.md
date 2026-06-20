@@ -17,7 +17,7 @@ docker compose run quadruped-deploy
 **Terminal 1** — MuJoCo simulator:
 
 ```bash
-cd /workspace/quadruped-locomotion-rl
+cd /workspace/compliant-quadruped-locomotion
 python -m deploy.mujoco.launch_sim
 ```
 
@@ -37,7 +37,7 @@ docker compose run quadruped-policy
 
 # Custom task
 DEPLOY_CONFIG=soft_pos_xy_tracking \
-POLICY_PATH=/workspace/quadruped-locomotion-rl/logs/rsl_rl/.../exported/policy.pt \
+POLICY_PATH=/workspace/compliant-quadruped-locomotion/logs/rsl_rl/.../exported/policy.pt \
 CMD_ARGS="position_commands=0.5,0.0" \
 docker compose run quadruped-policy
 ```
@@ -45,7 +45,7 @@ docker compose run quadruped-policy
 Source code is bind-mounted — changes apply immediately without rebuilds.
 
 Required sibling repos (relative to this repo's parent directory):
-- `../quadruped-locomotion-rl/`
+- `../compliant-quadruped-locomotion/`
 - `../unitree_robotics/unitree_mujoco/`
 - `../unitree_robotics/unitree_sdk2_python/`
 
@@ -73,4 +73,4 @@ quadruped-locomotion-deploy/
 
 ## Training
 
-Policies are trained in [quadruped-locomotion-rl](https://github.com/illusoryTwin/quadruped-locomotion-rl) and exported as JIT models with config YAML files. Copy exported artifacts to `policies/` for deployment.
+Policies are trained in [compliant-quadruped-locomotion](https://github.com/illusoryTwin/compliant-quadruped-locomotion) and exported as JIT models with config YAML files. Copy exported artifacts to `policies/` for deployment.

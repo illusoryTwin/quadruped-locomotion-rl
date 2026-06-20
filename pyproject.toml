@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "quadruped-locomotion-rl"
+name = "compliant-quadruped-locomotion"
 version = "0.0.1"
 description = "Compliance-based quadruped RL locomotion for Unitree Go2"
 readme = "README.md"

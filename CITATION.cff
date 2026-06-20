@@ -7,8 +7,8 @@ authors:
     given-names: Ekaterina
   - family-names: Nedelchev
     given-names: Simeon
-repository-code: "https://github.com/illusoryTwin/quadruped-locomotion-rl"
-url: "https://github.com/illusoryTwin/quadruped-locomotion-rl"
+repository-code: "https://github.com/illusoryTwin/compliant-quadruped-locomotion"
+url: "https://github.com/illusoryTwin/compliant-quadruped-locomotion"
 date-released: 2026-06-20
 license: BSD-3-Clause
 keywords:
@@ -26,4 +26,4 @@ preferred-citation:
     - family-names: Nedelchev
       given-names: Simeon
   year: 2026
-  url: "https://github.com/illusoryTwin/quadruped-locomotion-rl"
+  url: "https://github.com/illusoryTwin/compliant-quadruped-locomotion"
