@@ -5,6 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "quadruped-locomotion-rl"
 version = "0.0.1"
+description = "Compliance-based quadruped RL locomotion for Unitree Go2"
+readme = "README.md"
+license = "BSD-3-Clause"
+authors = [
+    { name = "Ekaterina Mozhegova", email = "mozhegova04@gmail.com" },
+]
 dependencies = []
 
 [project.scripts]

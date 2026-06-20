@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+title: "Force-Adaptive Policies for Robust and Safe Quadruped Locomotion"
+message: "If you use this work, please cite it as below."
+type: software
+authors:
+  - family-names: Mozhegova
+    given-names: Ekaterina
+  - family-names: Nedelchev
+    given-names: Simeon
+repository-code: "https://github.com/illusoryTwin/quadruped-locomotion-rl"
+url: "https://github.com/illusoryTwin/quadruped-locomotion-rl"
+date-released: 2026-06-20
+license: BSD-3-Clause
+keywords:
+  - reinforcement-learning
+  - quadruped-locomotion
+  - compliance
+  - unitree-go2
+  - isaac-lab
+preferred-citation:
+  type: generic
+  title: "Force-Adaptive Policies for Robust and Safe Quadruped Locomotion"
+  authors:
+    - family-names: Mozhegova
+      given-names: Ekaterina
+    - family-names: Nedelchev
+      given-names: Simeon
+  year: 2026
+  url: "https://github.com/illusoryTwin/quadruped-locomotion-rl"
